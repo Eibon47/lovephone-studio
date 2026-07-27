@@ -1,0 +1,32 @@
+node_modules/
+release/
+tests/.tmp-*
+vendor/mpv/*.exe
+vendor/mpv/*.dll
+
+# Local secrets and signing material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+
+# Local runtime data
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+coverage/
+.nyc_output/
+.cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

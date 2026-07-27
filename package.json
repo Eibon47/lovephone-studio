@@ -1,0 +1,75 @@
+{
+  "name": "lovephone-studio",
+  "version": "0.1.0",
+  "description": "面向个人 DIY 的 AI 角色陪伴小手机",
+  "author": "LovePhone Studio",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "web": "node server/static-server.mjs",
+    "services": "node server/start-services.mjs",
+    "prepare:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mpv.ps1",
+    "desktop": "electron .",
+    "desktop:dir": "electron-builder --win --dir",
+    "desktop:build": "electron-builder --win nsis",
+    "desktop:installer": "electron-builder --win nsis --prepackaged release/win-unpacked"
+  },
+  "dependencies": {
+    "@music163/ncm-cli": "file:vendor/ncm-cli-package",
+    "gridstack": "^13.0.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
+  },
+  "build": {
+    "appId": "studio.lovephone.desktop",
+    "productName": "LovePhone OS",
+    "asar": false,
+    "compression": "normal",
+    "publish": [],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "assets/**/*",
+      "desktop/**/*",
+      "server/**/*",
+      "src/**/*",
+      "index.html",
+      "manifest.webmanifest",
+      "sw.js",
+      "THIRD_PARTY_NOTICES.md",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/mpv",
+        "to": "mpv",
+        "filter": [
+          "mpv.exe",
+          "d3dcompiler_43.dll"
+        ]
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/app-icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "differentialPackage": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

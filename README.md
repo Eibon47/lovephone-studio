@@ -1,0 +1,98 @@
+# LovePhone Studio｜小手机工坊
+
+面向个人 DIY 的 AI 陪伴小手机搭建器。
+
+## 启动
+
+在项目目录打开两个终端。
+
+终端一启动页面：
+
+```powershell
+npm run web
+```
+
+终端二启动音乐和 AI 桥接服务：
+
+```powershell
+node server/start-services.mjs
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:5177/
+```
+
+音乐桥接默认使用 `5188` 端口，AI 桥接默认使用 `5189` 端口。也可以分别运行 `node server/music-bridge.mjs` 和 `node server/ai-bridge.mjs`。
+
+首次使用网易云音乐时，可以在小手机“设置 → 音乐服务”点击“打开登录窗口”，使用网易云音乐 App 扫码。开发环境也可以在终端运行：
+
+```powershell
+ncm-cli login
+```
+
+登录状态保存在网易云 CLI 自己的本机目录中，不会进入小手机配置。设置 App 的“测试音乐连接”可以分别检查桥接服务和网易云登录状态。
+
+搭建完成后，可在“完成”页打开独立小手机，也可以直接访问：
+
+```text
+http://127.0.0.1:5177/?mode=phone
+```
+
+Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
+
+## 接入真实 AI
+
+1. 在左侧“功能 → 设置”中勾选允许使用的模型服务商。
+2. 在右侧小手机打开“设置 → AI 模型连接”。
+3. 从下拉栏选择服务商，填写 API Key 和模型名称。
+4. 点击“连接并测试”，成功后聊天 App 会使用真实模型并流式显示回复。
+5. 自定义服务商还需要填写兼容接口的基础地址。
+
+每个角色默认跟随全局 AI，也可以在角色详情中指定另一个已连接的服务商。
+
+API Key 由本机 AI 桥接服务使用 Windows DPAPI 按当前 Windows 用户加密保存，不会写入浏览器、普通配置或导出的 JSON。其他 Windows 用户和其他电脑无法直接解密这份密钥文件。
+
+## 已支持的模型协议
+
+- OpenAI 兼容协议
+- Anthropic Messages
+- Google Gemini `streamGenerateContent`
+
+内置服务商包括 OpenAI、Anthropic、Gemini、xAI、DeepSeek、火山引擎方舟 / 豆包、通义千问、Kimi、智谱、MiniMax、腾讯混元、百度千帆、硅基流动、OpenRouter、Ollama，以及自定义服务商。
+
+## 主要功能
+
+- 角色、聊天、记忆、日记、纪念日、晚安问候和设置 App
+- 小手机整体美化、App 主题、图标套装和可拖动小组件
+- 网易云音乐搜索、推荐、榜单、歌单、歌词和本机播放
+- 小组件联动音乐、相框上传、天气、时钟等
+- 配置自动保存与 JSON 导入导出
+- IndexedDB 本地数据库、最多 10 份自动备份、手动备份与恢复
+
+## 数据保存
+
+配置、聊天、记忆、日记和图片保存在浏览器的 IndexedDB 中。首次打开新版时，旧 `localStorage` 数据会先写入 IndexedDB 并生成迁移备份，成功后才会清理旧数据。
+
+系统每隔至少 15 分钟为修改前的数据创建一份自动备份，最多保留 10 份。“完成”页可以查看空间占用、立即备份、恢复最近备份或导出 JSON。浏览器数据仍只属于当前设备，换设备前应导出 JSON。
+
+## 桌面版
+
+开发模式：
+
+```powershell
+npm install
+npm run desktop
+```
+
+准备本机 MPV 并生成 Windows 安装包：
+
+```powershell
+npm run prepare:mpv
+npm run desktop:build
+```
+
+目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。桌面版会自动启动网页、音乐桥接和 AI 桥接，不要求用户另装 Node；网易云首次登录可直接在设置 App 打开扫码窗口。
+
+当前 MPV 测试二进制的许可证、网易云音乐内容授权和 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。未完成这些事项前，生成的安装包仅用于本机测试，不应公开分发。
