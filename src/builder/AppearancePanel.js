@@ -1,13 +1,16 @@
-import { getEnabledApps } from '../system/appRegistry.js?v=app-config-61';
+import { getEnabledApps } from '../system/appRegistry.js?v=app-config-62';
 import { iconMap } from '../system/icons.js';
 import { fontStyles, phoneFrames } from '../system/options.js';
 import { escapeHtml } from '../system/html.js';
-import { APP_UI_THEMES, getAppIcon, getAppLook } from '../system/appAppearance.js?v=app-config-61';
+import { APP_UI_THEMES, getAppIcon, getAppLook } from '../system/appAppearance.js?v=app-config-71';
 import { WIDGET_CATALOG } from '../system/widgetCatalog.js';
 import {
   readOptimizedImage,
   readSquareImage
 } from '../services/imageUploadService.js?v=app-config-60';
+import {
+  bindCustomizationDrawer
+} from './CustomizationDrawer.js?v=app-config-83';
 
 const colors = ['#7fb59a', '#6b9ec9', '#9a88b8', '#d39c77', '#d98fa5'];
 
@@ -113,6 +116,7 @@ function renderPhoneAppearance(config) {
           ${fontStyles.map(item => `
             <button class="chip ${config.theme.fontStyle === item.id ? 'active' : ''}" type="button" data-set="theme.fontStyle" data-value="${item.id}">${item.label}</button>
           `).join('')}
+          <button class="chip custom-entry-chip" type="button" data-open-custom="basic">+ 自定义</button>
         </div>
       </div>
       <div class="field">
@@ -121,6 +125,7 @@ function renderPhoneAppearance(config) {
           ${phoneFrames.map(item => `
             <button class="chip ${config.theme.phoneFrame === item.id ? 'active' : ''}" type="button" data-set="theme.phoneFrame" data-value="${item.id}">${item.label}</button>
           `).join('')}
+          <button class="chip custom-entry-chip" type="button" data-open-custom="shell">+ 自定义</button>
         </div>
       </div>
       <div class="field">
@@ -129,6 +134,7 @@ function renderPhoneAppearance(config) {
           ${colors.map(color => `
             <button class="swatch ${config.theme.primaryColor.toLowerCase() === color ? 'active' : ''}" type="button" data-set="theme.primaryColor" data-value="${color}" style="--swatch:${color}" aria-label="${color}"></button>
           `).join('')}
+          <button class="swatch custom-swatch" type="button" data-open-custom="palette" aria-label="自定义配色">+</button>
         </div>
       </div>
 
@@ -145,6 +151,11 @@ function renderPhoneAppearance(config) {
               <small>${item.desc}</small>
             </button>
           `).join('')}
+          <button class="icon-style-card custom-entry-card" type="button" data-open-custom="iconPack">
+            <span class="custom-entry-symbol">+</span>
+            <strong>自定义图标套装</strong>
+            <small>分别上传并映射每一个 App 图标。</small>
+          </button>
         </div>
       </div>
 
@@ -157,6 +168,7 @@ function renderPhoneAppearance(config) {
           ${widgetStyles.map(style => `
             <button class="chip ${config.theme.widgetStyle === style.id ? 'active' : ''}" type="button" data-set="theme.widgetStyle" data-value="${style.id}">${style.label}</button>
           `).join('')}
+          <button class="chip custom-entry-chip" type="button" data-open-custom="desktop">+ 自定义桌面</button>
         </div>
         <div class="widget-config-list">
           ${widgetOptions.map(widget => `
@@ -171,6 +183,10 @@ function renderPhoneAppearance(config) {
               ${renderWidgetFields(widget, config)}
             </article>
           `).join('')}
+          <button class="widget-config-row custom-widget-entry" type="button" data-open-custom="widgets">
+            <span class="custom-entry-symbol">+</span>
+            <span><strong>自定义小组件</strong><small>选择数据来源、显示形式和点击动作。</small></span>
+          </button>
         </div>
       </div>
 
@@ -218,7 +234,7 @@ function renderAppAppearance(config, selectedAppId) {
           <div class="app-look-section">
             <div class="setting-group-title">
               <strong>1. 图标美化</strong>
-              <small>上传方形图片后，桌面和底部 Dock 会同步替换。</small>
+              <small>上传方形图片后，桌面和底部 Dock 会同步替换，并优先于整机图标套装。</small>
             </div>
             <div class="app-icon-uploader">
               <span class="app-icon-preview"><img src="${escapeHtml(selectedIcon)}" alt="" /></span>
@@ -254,6 +270,16 @@ function renderAppAppearance(config, selectedAppId) {
                   <small>${theme.desc}</small>
                 </button>
               `).join('')}
+              <button
+                class="app-theme-card custom-entry-card"
+                type="button"
+                data-open-custom="app"
+                data-custom-app="${selectedApp.id}"
+              >
+                <span class="custom-entry-symbol">+</span>
+                <strong>自定义主题</strong>
+                <small>编辑变量与当前 App 的限定 CSS。</small>
+              </button>
             </div>
           </div>
         </article>
@@ -269,6 +295,7 @@ function renderAppAppearance(config, selectedAppId) {
 
 export function renderAppearancePanel(config, ui = {}) {
   const activePage = ui.appearancePage === 'apps' ? 'apps' : 'phone';
+  const apps = getEnabledApps(config);
   return `
     <section class="panel-section beautify-panel">
       <div class="section-heading">
@@ -277,6 +304,10 @@ export function renderAppearancePanel(config, ui = {}) {
         <p>${activePage === 'phone'
           ? '先统一调整整台小手机的样式、图标和桌面小组件。'
           : '再选择一个 App，单独设计它自己的界面。'}</p>
+      </div>
+      <div class="beautify-package-toolbar">
+        <span>可视化美化</span>
+        <button type="button" data-open-custom="packages">导入 / 导出主题包</button>
       </div>
       ${renderAppearanceTabs(activePage)}
       ${activePage === 'phone'
@@ -287,6 +318,7 @@ export function renderAppearancePanel(config, ui = {}) {
 }
 
 export function bindAppearancePanel(root, handlers) {
+  bindCustomizationDrawer(root, handlers);
   root.querySelectorAll('[data-appearance-page]').forEach(button => {
     button.addEventListener('click', () => handlers.setAppearancePage?.(button.dataset.appearancePage));
   });

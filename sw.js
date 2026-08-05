@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lovephone-shell-v11';
+const CACHE_NAME = 'lovephone-shell-v33';
 const APP_SHELL = [
   './',
   './?mode=phone',
@@ -8,6 +8,7 @@ const APP_SHELL = [
   './assets/app-icon-512.png',
   './assets/vendor/gridstack/gridstack.min.css',
   './assets/vendor/gridstack/gridstack-all.js',
+  './assets/vendor/fflate/fflate.js',
   './src/styles/base.css',
   './src/styles/builder.css',
   './src/styles/phone-system.css',

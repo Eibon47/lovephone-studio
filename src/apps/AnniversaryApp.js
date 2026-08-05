@@ -81,7 +81,23 @@ function renderUndo(osState) {
 
 export const AnniversaryApp = {
   render(app, config, osState = {}) {
-    const events = Array.isArray(config.apps.anniversary.events) ? config.apps.anniversary.events : [];
+    const savedEvents = Array.isArray(config.apps.anniversary.events) ? config.apps.anniversary.events : [];
+    const events = savedEvents.length || !osState.companionAppearancePreviewMode ? savedEvents : [{
+      id: 'anniversary-preview', title: '我们认识的那天', date: '2025-02-14', yearly: true
+    }];
+    const previewConfig = osState.companionAppearancePreviewMode
+      ? {
+          ...config,
+          apps: {
+            ...config.apps,
+            anniversary: {
+              ...config.apps.anniversary,
+              reminders: true,
+              events
+            }
+          }
+        }
+      : config;
     const editing = events.find(item => item.id === osState.anniversaryEditingId);
     const canAdd = config.apps.anniversary.multipleDates || events.length === 0;
     return `
@@ -100,7 +116,7 @@ export const AnniversaryApp = {
             </div>
           `}
           ${osState.anniversaryNotice ? `<p class="anniversary-notice">${escapeHtml(osState.anniversaryNotice)}</p>` : ''}
-          ${renderReminderPanel(config, osState)}
+          ${renderReminderPanel(previewConfig, osState)}
           ${renderUndo(osState)}
           <div class="anniversary-list">
             ${events.length ? events.map((entry, index) => {
@@ -134,6 +150,7 @@ export const AnniversaryApp = {
   },
 
   bind(container, config, handlers, osState = {}) {
+    if (osState.companionAppearancePreviewMode) return;
     const events = Array.isArray(config.apps.anniversary.events) ? config.apps.anniversary.events : [];
     container.querySelector('[data-anniversary-form]')?.addEventListener('submit', event => {
       event.preventDefault();

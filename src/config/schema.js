@@ -1,6 +1,7 @@
-import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-59';
+import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-62';
 import { AI_PROVIDER_CATALOG, DEFAULT_AI_PROVIDERS } from './aiProviderCatalog.js?v=app-config-35';
 import { normalizeChatSessionData } from '../services/chatSessionService.js?v=app-config-59';
+import { normalizeCustomization } from '../services/customizationModel.js';
 
 // Cache-bumped default schema keeps older saved phones compatible with new widgets.
 const componentKeys = ['chat', 'music', 'memory', 'diary', 'anniversary', 'goodnight'];
@@ -90,7 +91,8 @@ function mergeTheme(baseTheme, sourceTheme = {}) {
     appLooks: {
       ...baseTheme.appLooks,
       ...(sourceTheme.appLooks || {})
-    }
+    },
+    customization: normalizeCustomization(sourceTheme.customization)
   };
 
   Object.keys(baseTheme.widgets || {}).forEach(key => {
@@ -153,6 +155,18 @@ function mergeAiProviders(baseProviders, sourceProviders = {}) {
   };
 }
 
+function normalizeAiAssistant(source = {}) {
+  const validIds = new Set(AI_PROVIDER_CATALOG.map(provider => provider.id));
+  const providerId = validIds.has(source.providerId) ? source.providerId : '';
+  return {
+    enabled: Boolean(source.enabled),
+    providerId,
+    profileId: 'builder-assistant',
+    model: typeof source.model === 'string' ? source.model.trim().slice(0, 160) : '',
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl.trim().slice(0, 300) : ''
+  };
+}
+
 export function normalizeConfig(input) {
   const base = cloneConfig(defaultConfig);
   const source = input && typeof input === 'object' ? input : {};
@@ -174,12 +188,13 @@ export function normalizeConfig(input) {
     components: { ...base.components, ...(source.components || {}) },
     apps: { ...base.apps },
     aiProviders: mergeAiProviders(base.aiProviders, source.aiProviders || {}),
+    aiAssistant: normalizeAiAssistant(source.aiAssistant || {}),
     model: { ...base.model, ...(source.model || {}) },
     memory: { ...base.memory, ...(source.memory || {}) },
     voice: { ...base.voice, ...(source.voice || {}) }
   };
 
-  normalized.version = 3;
+  normalized.version = 4;
   normalized.character.avatar = {
     ...base.character.avatar,
     ...(source.character?.avatar || {})

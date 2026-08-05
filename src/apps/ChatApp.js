@@ -2,7 +2,7 @@ import { escapeHtml } from '../system/html.js';
 import { getCharacterAvatar } from '../system/icons.js?v=app-config-61';
 import { getAppTheme } from '../system/appAppearance.js?v=app-config-17';
 import { renderStatusBar } from '../system/StatusBar.js';
-import { activeCharacter, localDateKey, makeId, timeLabel } from './appData.js?v=app-config-40';
+import { localDateKey, makeId, timeLabel } from './appData.js?v=app-config-40';
 import { getAiProvider } from '../config/aiProviderCatalog.js?v=app-config-35';
 import { streamAiChat } from '../services/aiService.js?v=app-config-57';
 import { friendlyAiError } from '../services/aiErrors.js?v=app-config-36';
@@ -36,8 +36,14 @@ function replyFor(text, character) {
   return `${character.speakingStyle ? '嗯，我在认真听。' : '我在。'}你刚才说的“${trimmed.slice(0, 18)}${trimmed.length > 18 ? '…' : ''}”，我记住了。`;
 }
 
+export function resolveChatCharacter(config, osState = {}) {
+  const characters = [config.character, ...(config.characters || [])];
+  return characters.find(character => character.id === osState.chatCharacterId)
+    || config.character;
+}
+
 function characterKey(config, osState = {}) {
-  return activeCharacter(config, osState)?.id || 'character-main';
+  return resolveChatCharacter(config, osState)?.id || 'character-main';
 }
 
 function activeProviderId(config, character) {
@@ -104,6 +110,28 @@ export function buildChatRequest(config, character, messages) {
 }
 
 function messagesFor(config, osState, character) {
+  if (osState.chatAppearancePreviewMode) {
+    const createdAt = new Date().toISOString();
+    return [{
+      id: 'appearance-preview-1',
+      from: 'character',
+      text: character.greeting || '你回来啦，今天过得怎么样？',
+      createdAt,
+      appearancePreview: true
+    }, {
+      id: 'appearance-preview-2',
+      from: 'user',
+      text: '今天想和你待一会儿。',
+      createdAt,
+      appearancePreview: true
+    }, {
+      id: 'appearance-preview-3',
+      from: 'character',
+      text: '好呀，我一直都在。你想从哪里开始说？',
+      createdAt,
+      appearancePreview: true
+    }];
+  }
   const saved = savedMessages(config, osState);
   if (saved.length) return saved;
   return [{
@@ -115,7 +143,7 @@ function messagesFor(config, osState, character) {
 }
 
 function renderMessageActions(message, generating) {
-  if (message.id === 'welcome') return '';
+  if (message.id === 'welcome' || message.appearancePreview) return '';
   return `
     <span class="chat-message-actions">
       ${message.from === 'character' ? `
@@ -147,7 +175,7 @@ function renderMessages(config, osState, character) {
 function renderHeader(theme, config, character, avatar) {
   if (theme === 'qq') return `
     <header class="themed-chat-nav qq-chat-nav">
-      <button type="button" data-go-home aria-label="返回桌面">‹</button>
+      <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img src="${avatar}" alt="" />
       <span><strong>${escapeHtml(character.name)}</strong><small>在线 · AI 陪伴中</small></span>
       <button type="button" aria-label="通话">♧</button>
@@ -155,7 +183,7 @@ function renderHeader(theme, config, character, avatar) {
     </header>`;
   if (theme === 'instagram') return `
     <header class="themed-chat-nav instagram-chat-nav">
-      <button type="button" data-go-home aria-label="返回桌面">‹</button>
+      <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img src="${avatar}" alt="" />
       <span><strong>${escapeHtml(character.name)}</strong><small>现在在线</small></span>
       <button type="button" aria-label="语音通话">♧</button>
@@ -165,20 +193,20 @@ function renderHeader(theme, config, character, avatar) {
     const handle = `@${String(character.name || 'lovephone').replace(/\s+/g, '').toLowerCase()}`;
     return `
       <header class="themed-chat-nav x-chat-nav">
-        <button type="button" data-go-home aria-label="返回桌面">‹</button>
+        <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
         <span><strong>${escapeHtml(character.name)}</strong><small>${escapeHtml(handle)}</small></span>
         <span></span>
       </header>`;
   }
   if (theme === 'wechat') return `
     <header class="themed-chat-nav wechat-chat-nav">
-      <button type="button" data-go-home aria-label="返回桌面">‹</button>
+      <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <h3>${escapeHtml(character.name)}</h3>
       <span></span>
     </header>`;
   return `
     <header class="chat-top chat-top-with-actions">
-      <button class="chat-back" type="button" data-go-home aria-label="返回桌面">‹</button>
+      <button class="chat-back" type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img class="chat-avatar" src="${avatar}" alt="" />
       <div><h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(character.relationship)} · ${escapeHtml(character.speakingStyle)}</p></div>
       <span></span>
@@ -278,6 +306,60 @@ async function autoWriteMemory(config, handlers, osState, {
   }
 }
 
+function chatListSummary(config, osState, character) {
+  const session = activeChatSession(config.apps.chat, character.id);
+  const messages = session
+    ? (config.apps.chat.history
+        ? messagesForSession(config.apps.chat, character.id, session.id)
+        : osState.ephemeralChatMessages?.[session.id] || [])
+    : [];
+  const latest = messages.at(-1);
+  return {
+    text: latest?.text || character.greeting || '点击开始聊天',
+    updatedAt: latest?.createdAt || session?.updatedAt || '',
+    sessionCount: sessionsForCharacter(config.apps.chat, character.id).length
+  };
+}
+
+function renderCharacterChatList(config, osState, theme) {
+  const characters = [config.character, ...(config.characters || [])];
+  return `
+    <section class="phone-screen phone-chat chat-character-list-screen chat-layout-${theme}">
+      ${renderStatusBar('chat-statusbar')}
+      <header class="chat-list-header">
+        <button type="button" data-go-home aria-label="返回桌面">‹</button>
+        <h3>聊天</h3>
+        <span>${characters.length} 位角色</span>
+      </header>
+      <div class="chat-character-list" role="list">
+        ${characters.map(character => {
+          const summary = chatListSummary(config, osState, character);
+          return `
+            <button
+              class="chat-character-row"
+              type="button"
+              data-chat-character="${escapeHtml(character.id)}"
+              role="listitem"
+            >
+              <img src="${escapeHtml(getCharacterAvatar(character))}" alt="" />
+              <span class="chat-character-copy">
+                <span>
+                  <strong>${escapeHtml(character.name)}</strong>
+                  <time>${summary.updatedAt ? escapeHtml(timeLabel(summary.updatedAt)) : ''}</time>
+                </span>
+                <small>${escapeHtml(summary.text)}</small>
+                <em>${escapeHtml(character.relationship || '陪伴者')} · ${summary.sessionCount} 个会话</em>
+              </span>
+              <i>›</i>
+            </button>
+          `;
+        }).join('')}
+      </div>
+      ${characters.length === 0 ? '<p class="chat-list-empty">请先在角色 App 中创建角色。</p>' : ''}
+    </section>
+  `;
+}
+
 function renderSessionManager(config, osState, character) {
   const sessions = sessionsForCharacter(config.apps.chat, character.id);
   const active = currentSession(config, osState);
@@ -327,9 +409,12 @@ function renderSessionManager(config, osState, character) {
 
 export const ChatApp = {
   render(app, config, osState = {}) {
-    const character = activeCharacter(config, osState);
+    const character = resolveChatCharacter(config, osState);
     const avatar = getCharacterAvatar(character);
     const theme = getAppTheme(config, app.id);
+    if (!['conversation', 'sessions'].includes(osState.chatView)) {
+      return renderCharacterChatList(config, osState, theme);
+    }
     const generating = generationSessions.has(runtimeKey(config, osState));
     const providerId = activeProviderId(config, character);
     const provider = getAiProvider(providerId);
@@ -386,6 +471,25 @@ export const ChatApp = {
     const session = currentSession(config, osState);
     const sessionId = session?.id;
     const key = runtimeKey(config, osState);
+
+    container.querySelectorAll('[data-chat-character]').forEach(button => {
+      button.addEventListener('click', () => {
+        handlers.updatePhoneState?.({
+          chatCharacterId: button.dataset.chatCharacter,
+          chatView: 'conversation',
+          chatSessionDeleteConfirmId: null,
+          chatStatus: ''
+        });
+      });
+    });
+    container.querySelector('[data-chat-list-back]')?.addEventListener('click', () => {
+      speechSessions.get(key)?.stop();
+      handlers.updatePhoneState?.({
+        chatView: 'list',
+        chatSessionDeleteConfirmId: null,
+        chatStatus: ''
+      });
+    });
 
     const saveMessages = (messages, options = {}) => {
       if (!sessionId) return;
@@ -496,7 +600,7 @@ export const ChatApp = {
 
     const startGeneration = async currentMessages => {
       if (generationSessions.has(key)) return;
-      const character = activeCharacter(config, osState);
+      const character = resolveChatCharacter(config, osState);
       const profile = resolveCharacterAiProfile(config, character);
       const providerId = profile.providerId;
       const avatar = getCharacterAvatar(character);
@@ -589,7 +693,7 @@ export const ChatApp = {
       };
       saveMessages(nextMessages, { noRender: true });
       const body = container.querySelector('[data-chat-body]');
-      if (body) body.innerHTML = renderMessages(config, osState, activeCharacter(config, osState));
+      if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
       await startGeneration(nextMessages);
     };
 
@@ -623,7 +727,7 @@ export const ChatApp = {
         if (!nextMessages.some(message => message.from === 'user')) return;
         saveMessages(nextMessages, { noRender: true });
         const body = container.querySelector('[data-chat-body]');
-        if (body) body.innerHTML = renderMessages(config, osState, activeCharacter(config, osState));
+        if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
         await startGeneration(nextMessages);
       });
     });

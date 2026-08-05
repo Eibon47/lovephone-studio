@@ -22,11 +22,18 @@ export function getAppLook(config, appId) {
 }
 
 export function getAppIcon(config, app) {
+  const customization = config.theme?.customization;
   const customIcon = getAppLook(config, app.id).icon;
   const uploaded = safeUploadedImage(customIcon.value);
   if (customIcon.mode === 'upload' && uploaded) {
     return uploaded;
   }
+  const customAppIcon = safeUploadedImage(customization?.appThemes?.[app.id]?.icon);
+  if (customAppIcon) return customAppIcon;
+  const packIcon = customization?.active?.iconPack
+    ? safeUploadedImage(customization?.iconPack?.icons?.[app.id])
+    : '';
+  if (packIcon) return packIcon;
   return iconMap[app.icon] || iconMap.heart;
 }
 

@@ -10,6 +10,31 @@ const demoTracks = [
   { id: 'demo-1', encryptedId: 'demo-1', originalId: 'demo-1', name: '晚风来信', artist: 'LovePhone', album: '陪伴电台', cover: '', duration: 0, playable: false }
 ];
 
+const appearancePreviewTracks = [
+  { id: 'preview-1', encryptedId: 'preview-1', originalId: 'preview-1', name: '晚风来信', artist: 'LovePhone', album: '陪伴电台', cover: '', duration: 228000, playable: true },
+  { id: 'preview-2', encryptedId: 'preview-2', originalId: 'preview-2', name: '与你散步', artist: '小手机电台', album: '今日陪伴', cover: '', duration: 196000, playable: true },
+  { id: 'preview-3', encryptedId: 'preview-3', originalId: 'preview-3', name: '月光落下', artist: 'LovePhone', album: '安静时刻', cover: '', duration: 244000, playable: true }
+];
+
+function appearancePreviewState(osState) {
+  const playlist = { id: 'preview-list', encryptedId: 'preview-list', name: '我的陪伴歌单', cover: '', creator: 'LovePhone', trackCount: 12, playCount: 286 };
+  return {
+    ...osState,
+    musicHomeLoaded: true,
+    musicStatus: '',
+    musicTrack: appearancePreviewTracks[0],
+    musicPlayback: { status: 'paused', position: 68, duration: 228, volume: 70, queueLength: 3, currentIndex: 0 },
+    musicHome: {
+      daily: appearancePreviewTracks,
+      ranking: appearancePreviewTracks,
+      created: [playlist, { ...playlist, id: 'preview-list-2', encryptedId: 'preview-list-2', name: '深夜收藏' }],
+      collected: [playlist],
+      radar: [playlist],
+      charts: [playlist]
+    }
+  };
+}
+
 let playbackPollTimer = null;
 let latestPlayback = null;
 let activeLyricIndex = -1;
@@ -533,13 +558,18 @@ async function syncTrackFromState(state, osState, handlers, base) {
 
 export const MusicApp = {
   render(_app, config, osState) {
-    if (osState.musicView === 'player') return renderPlayer(config, osState);
-    if (osState.musicView === 'playlist') return renderPlaylist(osState);
-    if (osState.musicView === 'library') return renderLibrary(osState);
-    return renderDiscover(config, osState);
+    const viewState = osState.musicAppearancePreviewMode ? appearancePreviewState(osState) : osState;
+    const viewConfig = osState.musicAppearancePreviewMode
+      ? { ...config, apps: { ...config.apps, music: { ...config.apps.music, showRecommendations: true, showLyrics: true } } }
+      : config;
+    if (viewState.musicView === 'player') return renderPlayer(viewConfig, viewState);
+    if (viewState.musicView === 'playlist') return renderPlaylist(viewState);
+    if (viewState.musicView === 'library') return renderLibrary(viewState);
+    return renderDiscover(viewConfig, viewState);
   },
 
   bind(container, config, handlers, osState) {
+    if (osState.musicAppearancePreviewMode) return;
     const base = apiBase(config);
     const tracks = allKnownTracks(osState);
     const playlists = [

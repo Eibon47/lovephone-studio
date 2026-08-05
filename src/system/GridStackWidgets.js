@@ -19,9 +19,13 @@ function saveAllLayouts(gridElement, handlers) {
       h: Number(item.getAttribute('gs-h')) || 1
     };
     const widgetId = item.dataset.widgetId;
+    const customWidgetIndex = item.dataset.customWidgetIndex;
     const appId = item.dataset.appLayoutId;
     if (widgetId) {
       handlers.updatePath?.(`theme.widgets.${widgetId}.layout`, layout, { noRender: true });
+    }
+    if (customWidgetIndex !== undefined) {
+      handlers.updatePath?.(`theme.customization.widgets.${customWidgetIndex}.layout`, layout, { noRender: true });
     }
     if (appId) {
       handlers.updatePath?.(`theme.appLayouts.${appId}`, layout, { noRender: true });
@@ -29,7 +33,7 @@ function saveAllLayouts(gridElement, handlers) {
   });
 }
 
-export function bindGridStackWidgets(container, handlers = {}) {
+export function bindGridStackWidgets(container, config, handlers = {}) {
   const gridElement = container.querySelector('[data-desktop-grid]');
   if (!gridElement || !globalThis.GridStack) return;
 
@@ -37,9 +41,13 @@ export function bindGridStackWidgets(container, handlers = {}) {
   previous?.destroy(false);
 
   const grid = globalThis.GridStack.init({
-    column: 4,
+    column: config.theme?.customization?.active?.desktop
+      ? Number(config.theme.customization.desktop?.columns) || 4
+      : 4,
     cellHeight: 38,
-    margin: 8,
+    margin: config.theme?.customization?.active?.desktop
+      ? Number(config.theme.customization.desktop?.gap) || 8
+      : 8,
     float: true,
     disableResize: true,
     draggable: { handle: '.grid-stack-item' },
@@ -60,9 +68,13 @@ export function bindGridStackWidgets(container, handlers = {}) {
   grid.on('change', (_event, items = []) => {
     items.forEach(item => {
       const widgetId = item.el?.dataset.widgetId;
+      const customWidgetIndex = item.el?.dataset.customWidgetIndex;
       const appId = item.el?.dataset.appLayoutId;
       if (widgetId) {
         handlers.updatePath?.(`theme.widgets.${widgetId}.layout`, toLayout(item), { noRender: true });
+      }
+      if (customWidgetIndex !== undefined) {
+        handlers.updatePath?.(`theme.customization.widgets.${customWidgetIndex}.layout`, toLayout(item), { noRender: true });
       }
       if (appId) {
         handlers.updatePath?.(`theme.appLayouts.${appId}`, toLayout(item), { noRender: true });

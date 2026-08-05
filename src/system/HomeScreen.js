@@ -1,6 +1,6 @@
 import { getEnabledApps } from './appRegistry.js?v=app-config-61';
 import { escapeHtml } from './html.js';
-import { getAppIcon } from './appAppearance.js?v=app-config-61';
+import { getAppIcon } from './appAppearance.js?v=app-config-71';
 import { safeUploadedImage } from './icons.js?v=app-config-61';
 import { renderStatusBar } from './StatusBar.js';
 import { WIDGET_IDS } from './widgetCatalog.js';
@@ -12,6 +12,7 @@ import {
 import {
   primaryAnniversary
 } from '../services/anniversaryService.js?v=app-config-44';
+import { renderCustomWidgets } from './customWidgetRuntime.js?v=app-config-70';
 
 const defaultLayouts = {
   clock: { x: 0, y: 0, w: 4, h: 2 },
@@ -278,6 +279,7 @@ function renderWidgetItems(config, osState) {
 
 function renderDesktopGrid(config, apps, currentApp, osState) {
   const widgetItems = renderWidgetItems(config, osState);
+  const customWidgetItems = renderCustomWidgets(config, osState);
   const appItems = apps
     .map((app, index) => appGridItem(app, currentApp, index, config))
     .join('');
@@ -285,6 +287,7 @@ function renderDesktopGrid(config, apps, currentApp, osState) {
   return `
     <div class="desktop-grid grid-stack" data-desktop-grid>
       ${widgetItems}
+      ${customWidgetItems}
       ${appItems}
     </div>
   `;

@@ -21,7 +21,7 @@ const contentTypes = {
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'nonce-lovephone-widget-sandbox'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",

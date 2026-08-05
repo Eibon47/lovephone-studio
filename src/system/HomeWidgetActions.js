@@ -1,4 +1,4 @@
-import { shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-13';
+import { shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-62';
 import {
   musicBaseUrl,
   musicFetchJson as fetchJson,
@@ -9,6 +9,7 @@ import { readOptimizedImage } from '../services/imageUploadService.js?v=app-conf
 let homePlaybackState = null;
 let homePollTimer = null;
 let clockTimer = null;
+let codeWidgetMessageHandler = null;
 
 function musicBase(config) {
   return musicBaseUrl(config);
@@ -143,6 +144,72 @@ async function controlVinyl(action, container, config, osState, handlers) {
   });
 }
 
+async function runCustomWidgetAction(action, target, control, container, config, osState, handlers) {
+  if (action === 'none') return;
+  if (action === 'openApp') {
+    if (config.apps?.[target]?.enabled) handlers.openApp?.(target);
+    return;
+  }
+  if (action === 'openChat') {
+    handlers.openApp?.('chat');
+    if (target) handlers.updatePhoneState?.({ chatCharacterId: target, chatView: 'conversation' });
+    return;
+  }
+  if (action === 'openAnniversary') {
+    if (config.apps?.anniversary?.enabled) handlers.openApp?.('anniversary');
+    return;
+  }
+  if (action === 'createDiary') {
+    if (config.apps?.diary?.enabled) handlers.openApp?.('diary');
+    return;
+  }
+  if (action === 'switchCharacter') {
+    const characters = [config.character, ...(config.characters || [])];
+    const selected = characters.find(character => character.id === target)
+      || characters.find(character => character.id !== config.apps?.character?.activeCharacterId);
+    if (selected) handlers.selectCharacter?.(selected.id, { characterView: 'detail' });
+    return;
+  }
+  const musicAction = {
+    musicPlayPause: 'toggle',
+    musicPrevious: 'prev',
+    musicNext: 'next'
+  }[action];
+  if (!musicAction) return;
+  if (control) control.disabled = true;
+  try {
+    await controlVinyl(musicAction, container, config, osState, handlers);
+  } catch (error) {
+    handlers.updatePhoneState?.({ musicStatus: error.message || '音乐操作失败。' });
+  } finally {
+    if (control) control.disabled = false;
+  }
+}
+
+function bindCodeWidgetBridge(container, config, osState, handlers) {
+  if (codeWidgetMessageHandler) window.removeEventListener('message', codeWidgetMessageHandler);
+  const frames = [...container.querySelectorAll('[data-custom-widget-frame]')];
+  codeWidgetMessageHandler = async event => {
+    const frame = frames.find(item => item.contentWindow === event.source);
+    const message = event.data;
+    if (!frame || !message || message.source !== 'lovephone-widget' || message.type !== 'action') return;
+    if (message.widgetId !== frame.dataset.customWidgetFrame) return;
+    const widget = (config.theme?.customization?.widgets || [])
+      .find(item => item.id === message.widgetId && item.mode === 'code');
+    if (!widget || !(widget.code?.actionPermissions || []).includes(message.action)) return;
+    await runCustomWidgetAction(
+      message.action,
+      String(message.target || '').slice(0, 80),
+      null,
+      container,
+      config,
+      osState,
+      handlers
+    );
+  };
+  window.addEventListener('message', codeWidgetMessageHandler);
+}
+
 function bindClock(container) {
   clearInterval(clockTimer);
   const update = () => {
@@ -185,7 +252,7 @@ function bindVinylPolling(container, config, osState) {
 
 export function bindHomeWidgetActions(container, config, osState, handlers = {}) {
   const interactive = container.querySelectorAll(
-    '[data-vinyl-control], [data-widget-open-app], [data-photo-widget-upload], [data-photo-widget-input]'
+    '[data-vinyl-control], [data-widget-open-app], [data-photo-widget-upload], [data-photo-widget-input], [data-custom-widget-action]'
   );
   interactive.forEach(node => {
     node.addEventListener('pointerdown', event => event.stopPropagation());
@@ -220,6 +287,16 @@ export function bindHomeWidgetActions(container, config, osState, handlers = {})
     });
   });
 
+  container.querySelectorAll('[data-custom-widget-action]').forEach(button => {
+    button.addEventListener('click', async event => {
+      event.stopPropagation();
+      if (shouldSuppressDesktopClick()) return;
+      const action = button.dataset.customWidgetAction;
+      const target = button.dataset.customWidgetTarget;
+      await runCustomWidgetAction(action, target, button, container, config, osState, handlers);
+    });
+  });
+
   const photoInput = container.querySelector('[data-photo-widget-input]');
   container.querySelector('[data-photo-widget-upload]')?.addEventListener('click', event => {
     event.stopPropagation();
@@ -241,4 +318,5 @@ export function bindHomeWidgetActions(container, config, osState, handlers = {})
 
   bindClock(container);
   bindVinylPolling(container, config, osState);
+  bindCodeWidgetBridge(container, config, osState, handlers);
 }

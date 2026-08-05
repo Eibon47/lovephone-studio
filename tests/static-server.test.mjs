@@ -17,6 +17,7 @@ test('desktop static server serves the app with security headers and blocks trav
     const index = await fetch(`${base}/index.html`);
     assert.equal(index.status, 200);
     assert.match(index.headers.get('content-security-policy'), /default-src 'self'/);
+    assert.match(index.headers.get('content-security-policy'), /nonce-lovephone-widget-sandbox/);
     assert.equal(index.headers.get('x-frame-options'), 'DENY');
     assert.match(await index.text(), /LovePhone Studio/);
 

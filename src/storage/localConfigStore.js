@@ -1,5 +1,5 @@
-import { defaultConfig } from '../config/defaultConfig.js?v=app-config-59';
-import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-59';
+import { defaultConfig } from '../config/defaultConfig.js?v=app-config-62';
+import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-62';
 
 const DB_NAME = 'lovePhoneStudio';
 const DB_VERSION = 1;

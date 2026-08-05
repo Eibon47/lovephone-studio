@@ -1,3 +1,5 @@
+import { cloneCustomization, DEFAULT_CUSTOMIZATION } from '../services/customizationModel.js';
+
 export const defaultConfig = {
   version: 1,
   meta: {
@@ -92,7 +94,8 @@ export const defaultConfig = {
       }
     },
     appLayouts: {},
-    appLooks: {}
+    appLooks: {},
+    customization: cloneCustomization(DEFAULT_CUSTOMIZATION)
   },
   components: {
     chat: true,
@@ -219,6 +222,13 @@ export const defaultConfig = {
       baseUrl: '',
       model: ''
     }
+  },
+  aiAssistant: {
+    enabled: false,
+    providerId: '',
+    profileId: 'builder-assistant',
+    model: '',
+    baseUrl: ''
   },
   model: {
     mode: 'not-configured',

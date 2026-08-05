@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { normalizeConfig } from '../src/config/schema.js';
+import { CUSTOMIZATION_VERSION } from '../src/services/customizationModel.js';
 
 test('schema upgrades preserve user app choices and content', () => {
   const migrated = normalizeConfig({
@@ -30,10 +31,12 @@ test('schema upgrades preserve user app choices and content', () => {
     }
   });
 
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(migrated.apps.memory.enabled, true);
   assert.equal(migrated.apps.diary.enabled, true);
   assert.equal(migrated.apps.anniversary.enabled, false);
   assert.equal(migrated.apps.memory.entries[0].content, '不要忘记这条记忆');
   assert.equal(migrated.apps.diary.entries[0].title, '旧日记');
+  assert.equal(migrated.theme.customization.version, CUSTOMIZATION_VERSION);
+  assert.equal(migrated.theme.customization.desktop.columns, 4);
 });

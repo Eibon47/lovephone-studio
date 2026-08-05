@@ -34,9 +34,28 @@ export const MemoryApp = {
   render(app, config, osState = {}) {
     const character = activeCharacter(config, osState);
     const allEntries = Array.isArray(config.apps.memory.entries) ? config.apps.memory.entries : [];
-    const entries = allEntries.filter(entry => (
+    const savedEntries = allEntries.filter(entry => (
       (entry.characterId || config.character.id) === character.id
     ));
+    const previewEntries = osState.memoryAppearancePreviewMode ? [
+      {
+        id: 'memory-preview-preference',
+        type: 'preferences',
+        title: '喜欢安静的晚风',
+        content: '比起热闹，更喜欢慢慢说话和散步。',
+        date: new Date().toISOString().slice(0, 10),
+        previewOnly: true
+      },
+      {
+        id: 'memory-preview-relationship',
+        type: 'relationship',
+        title: '我们的称呼',
+        content: `记得称呼你为“${character.userNickname || '你'}”。`,
+        date: new Date().toISOString().slice(0, 10),
+        previewOnly: true
+      }
+    ] : [];
+    const entries = savedEntries.length ? savedEntries : previewEntries;
     const editing = entries.find(item => item.id === osState.memoryEditingId);
     const allowedTypes = config.apps.memory.types || [];
     return `
@@ -56,7 +75,7 @@ export const MemoryApp = {
               <button type="button" data-memory-undo>撤销</button>
             </div>
           ` : ''}
-          <div class="memory-list ${config.apps.memory.visibleCards ? '' : 'is-compact'}" data-memory-list>
+          <div class="memory-list ${config.apps.memory.visibleCards || osState.memoryAppearancePreviewMode ? '' : 'is-compact'}" data-memory-list>
             ${entries.length ? entries.map(entry => {
               const confirming = osState.memoryDeleteConfirmId === entry.id;
               return `
@@ -64,7 +83,7 @@ export const MemoryApp = {
                 <header><span>${escapeHtml(typeLabels[entry.type] || '记忆')}</span><time>${escapeHtml(shortDate(entry.date))}</time></header>
                 <strong>${escapeHtml(entry.title)}</strong>
                 <p>${escapeHtml(entry.content)}</p>
-                ${config.apps.memory.userEditable && confirming ? `
+                ${entry.previewOnly ? '' : config.apps.memory.userEditable && confirming ? `
                   <div class="inline-delete-confirm">
                     <p>确定删除这条记忆吗？删除后仍可立即撤销。</p>
                     <button type="button" data-memory-delete-cancel>取消</button>

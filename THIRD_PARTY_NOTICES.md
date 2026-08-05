@@ -17,3 +17,12 @@ LovePhone OS 桌面测试包包含或使用以下第三方软件：
 - https://www.electronjs.org/docs/latest/tutorial/security
 - https://github.com/mpv-player/mpv
 - https://www.npmjs.com/package/@music163/ncm-cli
+
+## fflate
+
+- Version: 0.8.2
+- License: MIT
+- Source: https://github.com/101arrowz/fflate
+- Usage: local ZIP import and export for offline LovePhone theme packages
+
+The full license text is included at `assets/vendor/fflate/LICENSE`.

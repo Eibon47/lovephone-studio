@@ -117,9 +117,14 @@ export const DiaryApp = {
   render(app, config, osState = {}) {
     const character = activeCharacter(config, osState);
     const allEntries = Array.isArray(config.apps.diary.entries) ? config.apps.diary.entries : [];
-    const entries = allEntries.filter(entry => (
+    const savedEntries = allEntries.filter(entry => (
       (entry.characterId || config.character.id) === character.id
     ));
+    const entries = savedEntries.length || !osState.companionAppearancePreviewMode ? savedEntries : [{
+      id: 'diary-preview', date: localDateKey(), mood: 'good', title: '今天的小事',
+      content: '傍晚吹了一会儿风，也认真地和你说了几句话。',
+      comment: `${character.name}：谢谢你把今天交给我保存。`, aiSummary: '平静的一天里，也留下了值得记住的陪伴。'
+    }];
     const editing = entries.find(item => item.id === osState.diaryEditingId);
     return `
       <section class="phone-screen companion-data-app phone-diary-app">
@@ -168,6 +173,7 @@ export const DiaryApp = {
   },
 
   bind(container, config, handlers, osState = {}) {
+    if (osState.companionAppearancePreviewMode) return;
     const character = activeCharacter(config, osState);
     const allEntries = Array.isArray(config.apps.diary.entries) ? config.apps.diary.entries : [];
     const entries = allEntries.filter(entry => (

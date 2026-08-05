@@ -1,7 +1,7 @@
 import { iconMap } from '../system/icons.js?v=app-config-24';
 import { appOptions } from '../system/options.js?v=app-config-24';
 import { escapeHtml } from '../system/html.js';
-import { AI_PROVIDER_CATALOG } from '../config/aiProviderCatalog.js?v=app-config-35';
+import { AI_PROVIDER_CATALOG, getAiProvider } from '../config/aiProviderCatalog.js?v=app-config-85';
 
 const appCopy = {
   character: {
@@ -161,6 +161,7 @@ function aiBlock(appId, app) {
 }
 
 function renderAppList(config) {
+  const assistant = config.aiAssistant || {};
   return `
     <section class="panel-section">
       <div class="section-heading">
@@ -192,9 +193,71 @@ function renderAppList(config) {
             </div>
           `;
         }).join('')}
+        <div class="companion-row app-picker-row ai-assistant-picker-row">
+          <span class="companion-icon"><img src="${iconMap.settings}" alt="" /></span>
+          <span class="companion-copy">
+            <strong>AI 搭建助手</strong>
+            <small>在工坊左侧生成美化与小组件草稿，不会出现在最终小手机里。</small>
+          </span>
+          <div class="app-row-actions">
+            <label class="feature-switch" aria-label="${assistant.enabled ? '关闭 AI 搭建助手' : '启用 AI 搭建助手'}">
+              <input type="checkbox" data-ai-assistant-enabled ${assistant.enabled ? 'checked' : ''} />
+              <span class="feature-switch-track"></span>
+            </label>
+            <button type="button" data-config-ai-assistant>接口</button>
+          </div>
+        </div>
       </div>
       <div class="flow-actions">
         <button class="primary-action" type="button" data-next-step="appearance">下一步：美化</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderAiAssistantConfig(config, uiState = {}) {
+  const assistant = config.aiAssistant || {};
+  const draft = uiState.aiAssistant?.connectionDraft || {};
+  const provider = getAiProvider(draft.providerId || assistant.providerId) || AI_PROVIDER_CATALOG[0];
+  const status = uiState.aiAssistant?.connectionStatus
+    || (assistant.model ? `已保存：${assistant.model}` : '尚未连接');
+  return `
+    <section class="panel-section">
+      <div class="section-heading">
+        <span>工坊工具</span>
+        <h2>AI 搭建助手接口</h2>
+        <p>这个模型只用于生成美化和小组件草稿。密钥只发送到本机安全网关，不会进入小手机、导出 JSON 或浏览器存储。</p>
+      </div>
+      <div class="app-config-panel">
+        ${boolRow('aiAssistant.enabled', '启用 AI 搭建助手', '启用后，左侧工坊会出现 AI 助手入口；最终小手机不会包含它。', assistant.enabled)}
+        <label class="setting-field">
+          <span><strong>服务商</strong><small>选择专门给搭建助手使用的模型。</small></span>
+          <select data-ai-assistant-provider>
+            ${AI_PROVIDER_CATALOG.map(item => `<option value="${item.id}" ${item.id === provider.id ? 'selected' : ''}>${item.name}</option>`).join('')}
+          </select>
+        </label>
+        <label class="setting-field">
+          <span><strong>API Key</strong><small>仅本次连接时提交，不会回显或保存到配置。</small></span>
+          <input type="password" autocomplete="new-password" data-ai-assistant-key placeholder="${provider.apiKeyOptional ? '本地模型可不填' : '粘贴 API Key'}" />
+        </label>
+        <label class="setting-field">
+          <span><strong>模型名称</strong><small>可从建议中选择，也可以填写自己的模型 ID。</small></span>
+          <input type="text" list="assistant-model-suggestions" value="${escapeHtml(draft.model || assistant.model || provider.models[0] || '')}" data-ai-assistant-model placeholder="输入模型 ID" />
+          <datalist id="assistant-model-suggestions">
+            ${provider.models.map(model => `<option value="${escapeHtml(model)}"></option>`).join('')}
+          </datalist>
+        </label>
+        <label class="setting-field">
+          <span><strong>接口地址（可选）</strong><small>仅自定义兼容服务商或私有代理需要填写。</small></span>
+          <input type="url" value="${escapeHtml(draft.baseUrl || assistant.baseUrl || '')}" data-ai-assistant-base-url placeholder="https://api.example.com/v1" />
+        </label>
+        <div class="flow-actions ai-assistant-connect-actions">
+          <button class="primary-action" type="button" data-ai-assistant-connect>连接并测试</button>
+          <small data-ai-assistant-status>${escapeHtml(status)}</small>
+        </div>
+      </div>
+      <div class="flow-actions">
+        <button type="button" data-back-app-list>返回功能列表</button>
       </div>
     </section>
   `;
@@ -328,7 +391,8 @@ function renderSettingsConfig(config) {
   `;
 }
 
-function renderAppSettings(config, appId) {
+function renderAppSettings(config, appId, uiState = {}) {
+  if (appId === 'ai-assistant') return renderAiAssistantConfig(config, uiState);
   const option = appOptions.find(item => item.key === appId) || appOptions[0];
   const copy = copyFor(option);
   const renderers = {
@@ -360,7 +424,7 @@ function renderAppSettings(config, appId) {
 }
 
 export function renderAppSelectionPanel(config, uiState = {}) {
-  if (uiState.appConfigId) return renderAppSettings(config, uiState.appConfigId);
+  if (uiState.appConfigId) return renderAppSettings(config, uiState.appConfigId, uiState);
   return renderAppList(config);
 }
 
@@ -373,6 +437,10 @@ export function bindAppSelectionPanel(root, handlers) {
   root.querySelectorAll('[data-config-app]').forEach(button => {
     button.addEventListener('click', () => handlers.openAppConfig(button.dataset.configApp));
   });
+  root.querySelector('[data-ai-assistant-enabled]')?.addEventListener('change', event => {
+    handlers.setAiAssistantEnabled(event.currentTarget.checked);
+  });
+  root.querySelector('[data-config-ai-assistant]')?.addEventListener('click', handlers.openAiAssistantConfig);
   root.querySelector('[data-back-app-list]')?.addEventListener('click', handlers.closeAppConfig);
   root.querySelectorAll('[data-app-setting]').forEach(input => {
     input.addEventListener('change', () => {
@@ -403,5 +471,18 @@ export function bindAppSelectionPanel(root, handlers) {
       const values = [...root.querySelectorAll(`[data-app-list="${path}"]:checked`)].map(item => item.value);
       handlers.updatePath(path, values);
     });
+  });
+  root.querySelector('[data-ai-assistant-connect]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const providerId = root.querySelector('[data-ai-assistant-provider]')?.value || '';
+    const apiKey = root.querySelector('[data-ai-assistant-key]')?.value.trim() || '';
+    const model = root.querySelector('[data-ai-assistant-model]')?.value.trim() || '';
+    const baseUrl = root.querySelector('[data-ai-assistant-base-url]')?.value.trim() || '';
+    button.disabled = true;
+    try {
+      await handlers.configureAiAssistant({ providerId, apiKey, model, baseUrl });
+    } finally {
+      button.disabled = false;
+    }
   });
 }

@@ -102,8 +102,12 @@ function renderNotificationControl(config, osState) {
 export const GoodnightApp = {
   render(app, config, osState = {}) {
     const characterId = activeCharacter(config, osState).id;
-    const entries = (Array.isArray(config.apps.goodnight.entries) ? config.apps.goodnight.entries : [])
+    const savedEntries = (Array.isArray(config.apps.goodnight.entries) ? config.apps.goodnight.entries : [])
       .filter(entry => (entry.characterId || config.character.id) === characterId);
+    const entries = savedEntries.length || !osState.companionAppearancePreviewMode ? savedEntries : [{
+      id: 'goodnight-preview', date: localDateKey(), mood: 'peaceful', routine: ['water', 'wash'],
+      note: '今天已经做得很好了。', message: '晚安，剩下的事情明天再慢慢想。'
+    }];
     const latest = entries[0];
     return `
       <section class="phone-screen companion-data-app phone-goodnight-app">
@@ -149,6 +153,7 @@ export const GoodnightApp = {
   },
 
   bind(container, config, handlers, osState = {}) {
+    if (osState.companionAppearancePreviewMode) return;
     const entries = Array.isArray(config.apps.goodnight.entries) ? config.apps.goodnight.entries : [];
     container.querySelector('[data-goodnight-form]')?.addEventListener('submit', event => {
       event.preventDefault();
