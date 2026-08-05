@@ -252,7 +252,7 @@ function bindVinylPolling(container, config, osState) {
 
 export function bindHomeWidgetActions(container, config, osState, handlers = {}) {
   const interactive = container.querySelectorAll(
-    '[data-vinyl-control], [data-widget-open-app], [data-photo-widget-upload], [data-photo-widget-input], [data-custom-widget-action]'
+    '[data-vinyl-control], [data-widget-open-app], [data-widget-dismiss], [data-photo-widget-upload], [data-photo-widget-input], [data-custom-widget-action]'
   );
   interactive.forEach(node => {
     node.addEventListener('pointerdown', event => event.stopPropagation());
@@ -269,6 +269,16 @@ export function bindHomeWidgetActions(container, config, osState, handlers = {})
         }
         handlers.openApp?.(appId);
       }
+    });
+  });
+
+  container.querySelectorAll('[data-widget-dismiss]').forEach(button => {
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      if (shouldSuppressDesktopClick()) return;
+      const widgetId = button.dataset.widgetDismiss;
+      if (!widgetId) return;
+      handlers.updatePath?.(`theme.widgets.${widgetId}.enabled`, false);
     });
   });
 

@@ -228,6 +228,36 @@
   background: linear-gradient(145deg, #30343a, #151719);
 }
 
+.desktop-widget-dismiss {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(35 48 42 / 14%);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 160ms ease, background 160ms ease;
+}
+
+.desktop-widget-vinyl:hover .desktop-widget-dismiss,
+.desktop-widget-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.desktop-widget-dismiss:hover {
+  background: rgb(35 48 42 / 25%);
+}
+
 .vinyl-disc {
   display: grid;
   place-items: center;

@@ -104,6 +104,7 @@ function renderVinylWidget(widget, osState) {
   const cover = track?.cover || safeUploadedImage(widget.image);
   return gridItem('vinyl', widget, `
     <article class="desktop-widget desktop-widget-vinyl">
+      <button class="desktop-widget-dismiss" type="button" data-widget-dismiss="vinyl" aria-label="关闭唱片机组件" title="关闭">×</button>
       <button class="vinyl-disc ${playing ? 'is-playing' : ''}" type="button" data-widget-open-app="music" aria-label="打开音乐">
         ${cover ? `<img data-vinyl-cover src="${escapeHtml(cover)}" alt="" />` : '<span data-vinyl-cover></span>'}
       </button>
