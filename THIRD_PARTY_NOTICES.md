@@ -1,6 +1,6 @@
 # 第三方软件与发布提醒
 
-LovePhone OS 桌面测试包包含或使用以下第三方软件：
+公开桌面安装包不包含 MPV、网易云 CLI 或音乐桥接。以下音乐相关内容仅用于源码开发和本地实验：
 
 - Electron，MIT License
 - `@music163/ncm-cli` 0.1.6 运行文件，MIT License。项目在

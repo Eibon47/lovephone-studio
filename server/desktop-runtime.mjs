@@ -12,7 +12,10 @@ await startStaticServer({
   root,
   host: '127.0.0.1',
   port: Number(process.env.LOVEPHONE_WEB_PORT || 5177),
-  runtimeToken: process.env.LOVEPHONE_DESKTOP_INSTANCE_TOKEN || ''
+  runtimeToken: process.env.LOVEPHONE_DESKTOP_INSTANCE_TOKEN || '',
+  experimentalMusic: process.env.LOVEPHONE_EXPERIMENTAL_MUSIC === '1'
 });
-await import('./music-bridge.mjs');
+if (process.env.LOVEPHONE_EXPERIMENTAL_MUSIC === '1') {
+  await import('./music-bridge.mjs');
+}
 await import('./ai-bridge.mjs');

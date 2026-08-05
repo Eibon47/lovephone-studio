@@ -77,6 +77,23 @@ const steps = [
   { id: 'save', label: '完成' }
 ];
 
+async function loadRuntimeCapabilities() {
+  try {
+    const response = await fetch('/__lovephone_runtime', { cache: 'no-store' });
+    if (!response.ok) throw new Error('runtime unavailable');
+    const runtime = await response.json();
+    return {
+      desktop: Boolean(runtime.desktop),
+      experimentalMusic: runtime.experimentalMusic !== false
+    };
+  } catch {
+    // A static preview opened without the local server stays in development mode.
+    return { desktop: false, experimentalMusic: true };
+  }
+}
+
+const runtimeCapabilities = await loadRuntimeCapabilities();
+
 const state = {
   config: await loadConfig(),
   activeStep: 'apps',
@@ -86,7 +103,8 @@ const state = {
     selectedCharacterIndex: 0,
     selectedCharacterId: null,
     chatView: 'list',
-    chatCharacterId: null
+    chatCharacterId: null,
+    runtimeCapabilities
   },
   ui: {
     statusMessage: '已加载上次的小手机配置。',
@@ -466,10 +484,23 @@ function setStep(stepId) {
 function getPanelHtml() {
   if (state.activeStep === 'appearance') return renderAppearancePanel(state.config, state.ui);
   if (state.activeStep === 'save') return renderPreviewActions(state.config, state.ui);
-  return renderAppSelectionPanel(state.config, state.ui);
+  return renderAppSelectionPanel(state.config, {
+    ...state.ui,
+    runtimeCapabilities
+  });
 }
 
 function openPhoneApp(appId) {
+  const available = getEnabledApps(state.config, runtimeCapabilities)
+    .some(appItem => appItem.id === appId);
+  if (!available) {
+    state.phone.currentApp = 'home';
+    state.ui.statusMessage = appId === 'music'
+      ? '音乐是本地实验功能，不包含在公开安装包中。'
+      : '这个 App 当前未启用。';
+    render({ keepPhone: true });
+    return;
+  }
   state.phone.currentApp = appId;
   if (appId === 'chat') {
     state.phone.chatView = 'list';
@@ -658,7 +689,7 @@ function bindPanel(root) {
     setAppearancePage: page => {
       state.ui.appearancePage = page === 'apps' ? 'apps' : 'phone';
       if (state.ui.appearancePage === 'apps') {
-        const enabledApps = getEnabledApps(state.config);
+        const enabledApps = getEnabledApps(state.config, runtimeCapabilities);
         const selectedApp = enabledApps.find(app => app.id === state.ui.appearanceAppId) || enabledApps[0];
         state.ui.appearanceAppId = selectedApp?.id || 'character';
         state.phone.currentApp = state.ui.appearanceAppId;
@@ -1362,7 +1393,7 @@ function render(options = {}) {
           <div id="lovePhoneOS"></div>
         </aside>
       </main>
-      ${renderCustomizationDrawer(state.config, state.ui, getEnabledApps(state.config))}
+      ${renderCustomizationDrawer(state.config, state.ui, getEnabledApps(state.config, runtimeCapabilities))}
       <div id="globalStorageNotice" class="global-storage-notice" role="alert" hidden></div>
     `;
 

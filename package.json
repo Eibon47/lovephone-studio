@@ -13,16 +13,17 @@
     "services": "node server/start-services.mjs",
     "prepare:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mpv.ps1",
     "desktop": "electron .",
+    "desktop:experimental": "electron .",
     "desktop:dir": "electron-builder --win --dir",
     "desktop:build": "electron-builder --win nsis",
     "desktop:installer": "electron-builder --win nsis --prepackaged release/win-unpacked"
   },
   "dependencies": {
-    "@music163/ncm-cli": "file:vendor/ncm-cli-package",
     "fflate": "^0.8.2",
     "gridstack": "^13.0.0"
   },
   "devDependencies": {
+    "@music163/ncm-cli": "file:vendor/ncm-cli-package",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3"
   },
@@ -49,22 +50,17 @@
       "assets/**/*",
       "desktop/**/*",
       "server/**/*",
+      "!server/music-bridge.mjs",
+      "!server/ncm-login.ps1",
+      "!server/open-ncm-login.ps1",
       "src/**/*",
       "index.html",
       "manifest.webmanifest",
       "sw.js",
       "THIRD_PARTY_NOTICES.md",
+      "LICENSE",
+      "docs/PRIVACY.md",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "vendor/mpv",
-        "to": "mpv",
-        "filter": [
-          "mpv.exe",
-          "d3dcompiler_43.dll"
-        ]
-      }
     ],
     "win": {
       "signAndEditExecutable": false,

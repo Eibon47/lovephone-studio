@@ -11,6 +11,7 @@ let mainWindow = null;
 let runtimeProcess = null;
 const runtimeToken = randomBytes(24).toString('hex');
 const runtimeProof = createHash('sha256').update(runtimeToken).digest('hex');
+const experimentalMusic = !app.isPackaged || process.env.LOVEPHONE_EXPERIMENTAL_MUSIC === '1';
 
 if (!singleInstance) app.quit();
 
@@ -37,8 +38,11 @@ function startRuntime() {
       LOVEPHONE_AI_PORT: '5189',
       LOVEPHONE_DESKTOP_INSTANCE_TOKEN: runtimeToken,
       LOVEPHONE_TRUSTED_ORIGINS: 'http://127.0.0.1:5177',
-      NCM_CLI_JS: path.join(root, 'node_modules', '@music163', 'ncm-cli', 'dist', 'index.js'),
-      MPV_DIRECTORY: mpvDirectory()
+      LOVEPHONE_EXPERIMENTAL_MUSIC: experimentalMusic ? '1' : '0',
+      ...(experimentalMusic ? {
+        NCM_CLI_JS: path.join(root, 'node_modules', '@music163', 'ncm-cli', 'dist', 'index.js'),
+        MPV_DIRECTORY: mpvDirectory()
+      } : {})
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true

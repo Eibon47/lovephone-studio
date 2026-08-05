@@ -39,6 +39,7 @@ export const APP_REGISTRY = [
     name: '音乐',
     icon: 'music',
     enabledBy: 'components.music',
+    requiresRuntimeCapability: 'experimentalMusic',
     dock: false,
     component: MusicApp
   },
@@ -76,15 +77,18 @@ export const APP_REGISTRY = [
   }
 ];
 
-export function isAppEnabled(app, config) {
+export function isAppEnabled(app, config, runtimeCapabilities = {}) {
+  if (app.requiresRuntimeCapability && runtimeCapabilities[app.requiresRuntimeCapability] === false) {
+    return false;
+  }
   if (app.enabled === true) return true;
   if (config.apps?.[app.id]) return Boolean(config.apps[app.id].enabled);
   if (app.enabledBy) return Boolean(getPath(config, app.enabledBy));
   return false;
 }
 
-export function getEnabledApps(config) {
-  return APP_REGISTRY.filter(app => isAppEnabled(app, config));
+export function getEnabledApps(config, runtimeCapabilities = {}) {
+  return APP_REGISTRY.filter(app => isAppEnabled(app, config, runtimeCapabilities));
 }
 
 export function getAppById(appId) {

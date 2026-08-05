@@ -60,6 +60,8 @@ export function startStaticServer(options = {}) {
   const host = options.host || '127.0.0.1';
   const port = Number(options.port ?? process.env.LOVEPHONE_WEB_PORT ?? 5177);
   const runtimeToken = String(options.runtimeToken || '');
+  const experimentalMusic = options.experimentalMusic
+    ?? process.env.LOVEPHONE_EXPERIMENTAL_MUSIC !== '0';
   const runtimeProof = runtimeToken
     ? createHash('sha256').update(runtimeToken).digest('hex')
     : '';
@@ -77,7 +79,8 @@ export function startStaticServer(options = {}) {
     if (url.pathname === '/__lovephone_runtime') {
       return sendJson(response, 200, {
         desktop: Boolean(runtimeToken),
-        instance: runtimeProof
+        instance: runtimeProof,
+        experimentalMusic: Boolean(experimentalMusic)
       });
     }
     if (url.pathname === '/node_modules' || url.pathname.startsWith('/node_modules/')) {

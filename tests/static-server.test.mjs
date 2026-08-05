@@ -8,7 +8,8 @@ test('desktop static server serves the app with security headers and blocks trav
   const server = await startStaticServer({
     root: path.resolve('.'),
     port: 0,
-    runtimeToken: 'test-runtime-token'
+    runtimeToken: 'test-runtime-token',
+    experimentalMusic: false
   });
   const address = server.address();
   const base = `http://127.0.0.1:${address.port}`;
@@ -34,7 +35,8 @@ test('desktop static server serves the app with security headers and blocks trav
     assert.equal(runtime.status, 200);
     assert.deepEqual(await runtime.json(), {
       desktop: true,
-      instance: '7268834abc98ce207e4fdeb7b7189e365f62f4b6b85ce2739750a8c3bda0438a'
+      instance: '7268834abc98ce207e4fdeb7b7189e365f62f4b6b85ce2739750a8c3bda0438a',
+      experimentalMusic: false
     });
   } finally {
     await new Promise(resolve => server.close(resolve));

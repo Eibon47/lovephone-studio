@@ -3,7 +3,7 @@ import { PlaceholderApp } from '../apps/PlaceholderApp.js?v=app-config-16';
 
 export function renderAppRouter(config, osState, handlers) {
   const app = getAppById(osState.currentApp);
-  if (!app || !isAppEnabled(app, config)) {
+  if (!app || !isAppEnabled(app, config, osState.runtimeCapabilities)) {
     return PlaceholderApp.render({
       id: 'missing',
       name: '未找到',

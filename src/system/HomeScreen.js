@@ -265,8 +265,10 @@ const widgetRenderers = {
 
 function renderWidgetItems(config, osState) {
   const widgets = config.theme?.widgets || {};
+  const experimentalMusic = osState.runtimeCapabilities?.experimentalMusic !== false;
   return WIDGET_IDS
     .map(id => {
+      if (id === 'vinyl' && !experimentalMusic) return '';
       const enabled = widgets[id]?.enabled
         || (id === 'dailyNote' && config.apps?.goodnight?.enabled && config.apps.goodnight.desktopNote);
       const appEnabled = enabled
@@ -294,7 +296,7 @@ function renderDesktopGrid(config, apps, currentApp, osState) {
 }
 
 export function renderHomeScreen(config, osState) {
-  const apps = getEnabledApps(config);
+  const apps = getEnabledApps(config, osState.runtimeCapabilities);
   const dockApps = apps.filter(app => app.dock).slice(0, 4);
 
   return `

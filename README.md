@@ -56,7 +56,7 @@ npm run services
 
 不要把 API Key 写入仓库、截图或公开讨论中。
 
-音乐桥接默认使用 `5188` 端口，AI 桥接默认使用 `5189` 端口。也可以分别运行 `node server/music-bridge.mjs` 和 `node server/ai-bridge.mjs`。
+音乐桥接默认使用 `5188` 端口，AI 桥接默认使用 `5189` 端口。也可以分别运行 `node server/music-bridge.mjs` 和 `node server/ai-bridge.mjs`。音乐属于本地实验能力，仅在源码开发模式启用。
 
 首次使用网易云音乐时，可以在小手机“设置 → 音乐服务”点击“打开登录窗口”，使用网易云音乐 App 扫码。开发环境也可以在终端运行：
 
@@ -130,16 +130,17 @@ npm install
 npm run desktop
 ```
 
-准备本机 MPV 并生成 Windows 安装包：
+`npm run desktop`（或 `npm run desktop:experimental`）是本地开发模式，会保留实验音乐能力；使用前请自行准备 MPV，并确认网易云登录和使用权限。
+
+生成可公开测试的 Windows 安装包：
 
 ```powershell
-npm run prepare:mpv
 npm run desktop:build
 ```
 
-目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。桌面版会自动启动网页、音乐桥接和 AI 桥接，不要求用户另装 Node；网易云首次登录可直接在设置 App 打开扫码窗口。
+目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。正式安装包会自动启动网页和 AI 桥接，不要求用户另装 Node；它不包含 MPV、网易云 CLI 或音乐桥接，音乐 App 和唱片组件会自动隐藏。
 
-当前 MPV 测试二进制的许可证、网易云音乐内容授权和 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。未完成这些事项前，生成的安装包仅用于本机测试，不应公开分发。
+当前 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。本地实验音乐仍受 MPV 许可证和网易云音乐内容授权限制，不随公开安装包分发。
 
 ## 常见问题
 

@@ -160,7 +160,7 @@ function aiBlock(appId, app) {
   `;
 }
 
-function renderAppList(config) {
+function renderAppList(config, runtimeCapabilities = {}) {
   const assistant = config.aiAssistant || {};
   return `
     <section class="panel-section">
@@ -170,7 +170,9 @@ function renderAppList(config) {
         <p>角色、聊天、设置是必须的；其他功能可以开关。点“配置”后，右侧手机会直接打开对应 App。</p>
       </div>
       <div class="companion-list app-picker-list">
-        ${appOptions.map(option => {
+        ${appOptions.filter(option => (
+          option.key !== 'music' || runtimeCapabilities.experimentalMusic !== false
+        )).map(option => {
           const copy = copyFor(option);
           return `
             <div class="companion-row app-picker-row ${option.required ? 'is-required' : ''}">
@@ -424,8 +426,10 @@ function renderAppSettings(config, appId, uiState = {}) {
 }
 
 export function renderAppSelectionPanel(config, uiState = {}) {
-  if (uiState.appConfigId) return renderAppSettings(config, uiState.appConfigId, uiState);
-  return renderAppList(config);
+  if (uiState.appConfigId && !(uiState.appConfigId === 'music' && uiState.runtimeCapabilities?.experimentalMusic === false)) {
+    return renderAppSettings(config, uiState.appConfigId, uiState);
+  }
+  return renderAppList(config, uiState.runtimeCapabilities);
 }
 
 export function bindAppSelectionPanel(root, handlers) {
