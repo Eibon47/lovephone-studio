@@ -16,7 +16,11 @@ const experimentalMusic = !app.isPackaged || process.env.LOVEPHONE_EXPERIMENTAL_
 if (!singleInstance) app.quit();
 
 function appRoot() {
-  return app.isPackaged ? path.join(process.resourcesPath, 'app') : projectRoot;
+  return app.isPackaged ? app.getAppPath() : projectRoot;
+}
+
+function runtimeWorkingDirectory() {
+  return app.isPackaged ? process.resourcesPath : projectRoot;
 }
 
 function mpvDirectory() {
@@ -28,7 +32,7 @@ function mpvDirectory() {
 function startRuntime() {
   const root = appRoot();
   runtimeProcess = spawn(process.execPath, [path.join(root, 'server', 'desktop-runtime.mjs')], {
-    cwd: root,
+    cwd: runtimeWorkingDirectory(),
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',

@@ -140,7 +140,7 @@ npm run desktop:build
 
 目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。正式安装包会自动启动网页和 AI 桥接，不要求用户另装 Node；它不包含 MPV、网易云 CLI 或音乐桥接，音乐 App 和唱片组件会自动隐藏。
 
-当前 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。本地实验音乐仍受 MPV 许可证和网易云音乐内容授权限制，不随公开安装包分发。
+正式安装包已启用 ASAR 封装，减少应用代码被直接修改的风险；这不是加密，也不能替代数字签名。当前 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。本地实验音乐仍受 MPV 许可证和网易云音乐内容授权限制，不随公开安装包分发。
 
 ## 常见问题
 

@@ -40,7 +40,7 @@
   "build": {
     "appId": "studio.lovephone.desktop",
     "productName": "LovePhone OS",
-    "asar": false,
+    "asar": true,
     "compression": "normal",
     "publish": [],
     "directories": {
