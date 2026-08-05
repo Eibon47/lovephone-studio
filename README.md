@@ -2,6 +2,28 @@
 
 面向个人 DIY 的 AI 陪伴小手机搭建器。
 
+> 这是一个本地优先的开源开发版。它目前主要支持 Windows；公开下载安装包前，音乐内容授权、MPV 许可证义务和 Windows 代码签名仍需完成。
+
+## 开源与边界
+
+- 本项目以 [MIT License](LICENSE) 开源。
+- 欢迎提交问题与改进建议，参与方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 安全问题请按 [SECURITY.md](SECURITY.md) 中的方式私密报告，不要在公开 Issue 中附上 API Key、聊天内容或本地数据。
+- 隐私、数据保存和删除方式见 [docs/PRIVACY.md](docs/PRIVACY.md)。
+
+## 环境要求
+
+- Windows 10 或 Windows 11
+- Node.js 20 或更高版本
+- npm 10 或更高版本
+- Chrome 或 Edge（用于网页模式、PWA 和语音输入）
+
+首次安装依赖：
+
+```powershell
+npm ci
+```
+
 ## 启动
 
 在项目目录打开两个终端。
@@ -23,6 +45,16 @@ node server/start-services.mjs
 ```text
 http://127.0.0.1:5177/
 ```
+
+如需改端口或本机 MPV 位置，可在启动前设置 PowerShell 环境变量。例如：
+
+```powershell
+$env:LOVEPHONE_AI_PORT = "5189"
+$env:MPV_DIRECTORY = "C:\Program Files\MPV Player"
+npm run services
+```
+
+不要把 API Key 写入仓库、截图或公开讨论中。
 
 音乐桥接默认使用 `5188` 端口，AI 桥接默认使用 `5189` 端口。也可以分别运行 `node server/music-bridge.mjs` 和 `node server/ai-bridge.mjs`。
 
@@ -108,3 +140,17 @@ npm run desktop:build
 目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。桌面版会自动启动网页、音乐桥接和 AI 桥接，不要求用户另装 Node；网易云首次登录可直接在设置 App 打开扫码窗口。
 
 当前 MPV 测试二进制的许可证、网易云音乐内容授权和 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。未完成这些事项前，生成的安装包仅用于本机测试，不应公开分发。
+
+## 常见问题
+
+### 页面能打开，但 AI 无法连接
+
+确认第二个终端正在运行 `node server/start-services.mjs`，再在小手机“设置 → AI 模型连接”中点击“连接并测试”。API Key 仅交给本机 AI 桥接服务，不会进入导出的主题或配置文件。
+
+### 音乐 App 没有内容或不能播放
+
+音乐依赖本机音乐桥接服务、网易云登录状态和 MPV。先确认“设置 → 音乐服务”的连接检测通过。该功能仍是实验性本地功能，不适合作为公开安装包的承诺能力。
+
+### 换浏览器或换电脑后内容不见了
+
+聊天、记忆、图片和主题保存在当前设备的浏览器 IndexedDB。请在“完成”页导出 JSON 或主题包后再迁移设备；导出的文件不含 API Key。

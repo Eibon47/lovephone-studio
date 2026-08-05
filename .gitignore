@@ -1,6 +1,7 @@
 node_modules/
 release/
 tests/.tmp-*
+/.tmp-*
 vendor/mpv/*.exe
 vendor/mpv/*.dll
 

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "面向个人 DIY 的 AI 角色陪伴小手机",
   "author": "LovePhone Studio",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
