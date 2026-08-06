@@ -1,5 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 const MAX_COOKIE_LENGTH = 8192;
 const MAX_REQUEST_BYTES = 24 * 1024;
+let anonymousTokenReady = null;
 
 const ROUTES = {
   '/cloudsearch': { module: 'cloudsearch', fields: ['keywords', 'limit'] },
@@ -74,6 +79,12 @@ function cleanParams(route, input = {}) {
 }
 
 async function callNetease(moduleName, params, cookie) {
+  if (!anonymousTokenReady) {
+    const tokenPath = path.join(tmpdir(), 'anonymous_token');
+    anonymousTokenReady = mkdir(path.dirname(tokenPath), { recursive: true })
+      .then(() => writeFile(tokenPath, '', { flag: 'a' }));
+  }
+  await anonymousTokenReady;
   const [moduleImport, requestImport] = await Promise.all([
     moduleLoaders[moduleName](),
     import('NeteaseCloudMusicApi/util/request.js')
