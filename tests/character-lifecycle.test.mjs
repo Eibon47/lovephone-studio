@@ -24,6 +24,10 @@ test('deleting a character purges every role-scoped data collection', () => {
     { id: 'kept-chat', characterId: keptId },
     { id: 'removed-chat', characterId: removedId }
   ];
+  config.apps.chat.drafts = {
+    'session-kept': '保留草稿',
+    'session-removed': '删除草稿'
+  };
   for (const appId of ['memory', 'diary']) {
     config.apps[appId].entries = [
       { id: `kept-${appId}`, characterId: keptId },
@@ -43,6 +47,7 @@ test('deleting a character purges every role-scoped data collection', () => {
   assert.deepEqual(next.apps.chat.sessions.map(item => item.id), ['session-kept']);
   assert.deepEqual(next.apps.chat.messages.map(item => item.id), ['kept-chat']);
   assert.equal(next.apps.chat.activeSessionIds[removedId], undefined);
+  assert.deepEqual(next.apps.chat.drafts, { 'session-kept': '保留草稿' });
   assert.deepEqual(next.apps.memory.entries.map(item => item.id), ['kept-memory']);
   assert.deepEqual(next.apps.diary.entries.map(item => item.id), ['kept-diary']);
   assert.deepEqual(next.apps.goodnight.entries.map(item => item.id), ['kept-night']);

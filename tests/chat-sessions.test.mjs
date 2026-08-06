@@ -68,6 +68,15 @@ test('history-on messages persist only to the selected session and name it', () 
   assert.equal(update.chat.sessions[0].title, '这是新的会话标题和消息'.slice(0, 18));
 });
 
+test('chat drafts survive normalization because they belong to the user, not the model', async () => {
+  const { normalizeConfig } = await import('../src/config/schema.js');
+  const { cloneConfig, defaultConfig } = await import('../src/config/defaultConfig.js');
+  const source = cloneConfig(defaultConfig);
+  source.apps.chat.drafts = { 'session-character-main-main': '还没发出去的话' };
+  const normalized = normalizeConfig(source);
+  assert.equal(normalized.apps.chat.drafts['session-character-main-main'], '还没发出去的话');
+});
+
 test('session message replacement never touches another role or conversation', () => {
   const chat = normalizeChatSessionData({
     sessions: [

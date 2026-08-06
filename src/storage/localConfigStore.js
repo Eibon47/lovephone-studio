@@ -1,5 +1,5 @@
-import { defaultConfig } from '../config/defaultConfig.js?v=app-config-62';
-import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-62';
+import { defaultConfig } from '../config/defaultConfig.js?v=app-config-95';
+import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-95';
 
 const DB_NAME = 'lovePhoneStudio';
 const DB_VERSION = 1;
@@ -323,6 +323,22 @@ export function exportConfig(config) {
   link.remove();
   URL.revokeObjectURL(url);
   return filename;
+}
+
+export function summarizeImportedConfig(config) {
+  const normalized = normalizeConfig(config);
+  const characters = [normalized.character, ...(normalized.characters || [])];
+  const enabledApps = Object.values(normalized.apps || {})
+    .filter(app => app?.enabled)
+    .length;
+  return {
+    title: normalized.meta?.title || '我的小手机',
+    characters: characters.length,
+    enabledApps,
+    messages: normalized.apps?.chat?.messages?.length || 0,
+    memories: normalized.apps?.memory?.entries?.length || 0,
+    diaries: normalized.apps?.diary?.entries?.length || 0
+  };
 }
 
 export async function importConfigFromFile(file) {

@@ -1,8 +1,16 @@
 export function purgeCharacterData(config, characterId) {
   const chat = config.apps?.chat || {};
   const sessions = (chat.sessions || []).filter(session => session.characterId !== characterId);
+  const removedSessionIds = new Set(
+    (chat.sessions || [])
+      .filter(session => session.characterId === characterId)
+      .map(session => session.id)
+  );
   const activeSessionIds = { ...(chat.activeSessionIds || {}) };
   delete activeSessionIds[characterId];
+  const drafts = Object.fromEntries(
+    Object.entries(chat.drafts || {}).filter(([sessionId]) => !removedSessionIds.has(sessionId))
+  );
 
   return {
     ...config,
@@ -12,6 +20,7 @@ export function purgeCharacterData(config, characterId) {
         ...chat,
         sessions,
         activeSessionIds,
+        drafts,
         messages: (chat.messages || []).filter(message => message.characterId !== characterId)
       },
       memory: {

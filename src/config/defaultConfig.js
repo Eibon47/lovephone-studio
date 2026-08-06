@@ -7,7 +7,15 @@ export const defaultConfig = {
     templateId: 'minimal-phone',
     appFlowVersion: 5,
     createdAt: '',
-    updatedAt: ''
+    updatedAt: '',
+    phoneSetup: {
+      dismissed: false,
+      completed: {
+        character: false,
+        ai: false,
+        backup: false
+      }
+    }
   },
   character: {
     id: 'character-main',
@@ -141,13 +149,17 @@ export const defaultConfig = {
       layout: 'bubble',
       messages: [],
       sessions: [],
-      activeSessionIds: {}
+      activeSessionIds: {},
+      // Drafts are scoped by session ID. They are content the user explicitly
+      // typed, so keeping them makes a refresh or an accidental return safe.
+      drafts: {}
     },
     music: {
       enabled: true,
       required: false,
-      source: 'official-ncm-cli',
-      apiBaseUrl: 'http://127.0.0.1:5188',
+      source: 'netease-compatible-api',
+      apiBaseUrl: '',
+      onlineEnabled: false,
       showRecommendations: true,
       showLyrics: true,
       autoplay: false
@@ -205,7 +217,9 @@ export const defaultConfig = {
     }
   },
   aiProviders: {
-    bridgeUrl: 'http://127.0.0.1:5189',
+    // Empty means automatic: local development uses the desktop bridge and a
+    // deployed site uses the same-origin Netlify Function.
+    bridgeUrl: '',
     pendingProfileDeletes: [],
     selected: ['deepseek', 'qwen', 'kimi', 'zhipu', 'openai', 'anthropic', 'gemini', 'custom'],
     activeId: 'deepseek',

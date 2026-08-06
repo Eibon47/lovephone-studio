@@ -309,10 +309,11 @@ function renderMusicConfig(config) {
   return `
     <div class="setting-group">
       <div class="setting-group-title">
-        <strong>音乐数据源</strong>
-        <small>默认连接本机的网易云官方 CLI 桥接服务，密钥不会进入网页。</small>
+        <strong>在线音乐服务</strong>
+        <small>可选。用户在小手机设置中填写可信的 NeteaseCloudMusicApi 兼容地址；本地音乐不需要服务。</small>
       </div>
-      ${textAreaRow('apps.music.apiBaseUrl', '本机服务地址', '默认：http://127.0.0.1:5188', app.apiBaseUrl, 2, 300)}
+      ${boolRow('apps.music.onlineEnabled', '启用在线音乐', '关闭后仅保留本地上传和浏览器播放。', app.onlineEnabled)}
+      ${textAreaRow('apps.music.apiBaseUrl', '默认兼容 API 地址', '可留空，由每台小手机的设置 App 自行填写', app.apiBaseUrl, 2, 300)}
     </div>
     ${boolRow('apps.music.showRecommendations', '显示推荐内容', '在音乐首页显示每日推荐和快捷入口。', app.showRecommendations)}
     ${boolRow('apps.music.showLyrics', '显示歌词入口', '播放页保留歌词查看入口。', app.showLyrics)}

@@ -13,6 +13,13 @@ const typeLabels = {
   event: '重要事件'
 };
 
+function memorySourceLabel(entry) {
+  if (entry.source === 'chat-auto') return '来自聊天自动记录';
+  if (entry.source === 'diary') return '来自日记';
+  if (entry.source === 'goodnight') return '来自问候记录';
+  return '手动添加';
+}
+
 function renderForm(entry = {}, allowedTypes = Object.keys(typeLabels)) {
   const types = allowedTypes.length ? allowedTypes : Object.keys(typeLabels);
   return `
@@ -83,6 +90,7 @@ export const MemoryApp = {
                 <header><span>${escapeHtml(typeLabels[entry.type] || '记忆')}</span><time>${escapeHtml(shortDate(entry.date))}</time></header>
                 <strong>${escapeHtml(entry.title)}</strong>
                 <p>${escapeHtml(entry.content)}</p>
+                ${entry.previewOnly ? '' : `<small class="memory-source-label">${escapeHtml(memorySourceLabel(entry))}</small>`}
                 ${entry.previewOnly ? '' : config.apps.memory.userEditable && confirming ? `
                   <div class="inline-delete-confirm">
                     <p>确定删除这条记忆吗？删除后仍可立即撤销。</p>

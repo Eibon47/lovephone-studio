@@ -6,6 +6,7 @@ import {
   greetingKey,
   greetingLabel
 } from '../services/greetingService.js?v=app-config-45';
+import { diaryEntryFromGoodnight } from '../services/companionLinkService.js?v=app-config-1';
 
 const routineItems = [
   { id: 'water', label: '喝一点水' },
@@ -142,6 +143,11 @@ export const GoodnightApp = {
               ${latest.note ? `<p>${escapeHtml(latest.note)}</p>` : ''}
               <blockquote>${escapeHtml(latest.message)}</blockquote>
               <small>完成 ${latest.routine?.length || 0}/${routineItems.length} 项睡前准备</small>
+              ${config.apps?.diary?.enabled ? `
+                <button type="button" data-goodnight-save-diary="${escapeHtml(latest.id)}">
+                  ${config.apps.diary.entries?.some(item => item.sourceGoodnightId === latest.id) ? '已写入日记' : '写进日记'}
+                </button>
+              ` : ''}
             </article>` : ''}
           ${entries.length > 1 ? `
             <div class="goodnight-history">
@@ -207,6 +213,18 @@ export const GoodnightApp = {
       } catch {
         handlers.updatePhoneState?.({ notificationStatus: '浏览器没有完成通知授权。' });
       }
+    });
+    container.querySelector('[data-goodnight-save-diary]')?.addEventListener('click', event => {
+      const latest = handlers.getConfig?.() || config;
+      const nightEntry = latest.apps?.goodnight?.entries?.find(item => item.id === event.currentTarget.dataset.goodnightSaveDiary);
+      if (!nightEntry || !latest.apps?.diary?.enabled) return;
+      if ((latest.apps.diary.entries || []).some(item => item.sourceGoodnightId === nightEntry.id)) return;
+      const character = activeCharacter(latest, osState);
+      handlers.updatePath?.(
+        'apps.diary.entries',
+        [diaryEntryFromGoodnight(nightEntry, character.id), ...(latest.apps.diary.entries || [])],
+        { keepPhone: true }
+      );
     });
   }
 };

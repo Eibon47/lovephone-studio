@@ -10,6 +10,7 @@ import {
   removeItemWithUndo,
   restoreItemFromUndo
 } from '../services/listUndo.js?v=app-config-44';
+import { diaryMemoryEntry } from '../services/companionLinkService.js?v=app-config-1';
 
 const moods = [
   { id: 'great', icon: '☀', label: '很好', score: 90 },
@@ -57,6 +58,16 @@ function renderSummary(entry, aiSummaryEnabled, generatingId) {
       </header>
       <p>${generating ? '正在整理这一天…' : escapeHtml(entry.aiSummary || '还没有生成总结。')}</p>
     </section>
+  `;
+}
+
+function renderMemoryAction(entry, config) {
+  if (!config.apps?.memory?.enabled || !config.apps.memory.userEditable) return '';
+  const saved = (config.apps.memory.entries || []).some(item => item.sourceDiaryId === entry.id);
+  return `
+    <button type="button" data-diary-save-memory="${escapeHtml(entry.id)}" ${saved ? 'disabled' : ''}>
+      ${saved ? '已写入记忆' : '记住这一天'}
+    </button>
   `;
 }
 
@@ -162,7 +173,7 @@ export const DiaryApp = {
                         <button type="button" data-diary-delete-confirm="${escapeHtml(entry.id)}">确认删除</button>
                       </div>
                     ` : `
-                      <footer><button type="button" data-diary-edit="${escapeHtml(entry.id)}">编辑</button><button type="button" data-diary-delete="${escapeHtml(entry.id)}">删除</button></footer>
+                      <footer><button type="button" data-diary-edit="${escapeHtml(entry.id)}">编辑</button>${renderMemoryAction(entry, config)}<button type="button" data-diary-delete="${escapeHtml(entry.id)}">删除</button></footer>
                     `}
                   </div>
                 </article>`;
@@ -272,6 +283,21 @@ export const DiaryApp = {
           osState,
           entry,
           activeCharacter(latestConfig, osState)
+        );
+      });
+    });
+    container.querySelectorAll('[data-diary-save-memory]').forEach(button => {
+      button.addEventListener('click', () => {
+        const latest = handlers.getConfig?.() || config;
+        const entry = latest.apps?.diary?.entries?.find(item => item.id === button.dataset.diarySaveMemory);
+        if (!entry || !latest.apps?.memory?.enabled) return;
+        const exists = (latest.apps.memory.entries || []).some(item => item.sourceDiaryId === entry.id);
+        if (exists) return;
+        handlers.updatePhoneState?.({ diaryStatus: '这一天已经写入角色记忆。' });
+        handlers.updatePath?.(
+          'apps.memory.entries',
+          [diaryMemoryEntry(entry, character.id), ...(latest.apps.memory.entries || [])],
+          { keepPhone: true }
         );
       });
     });

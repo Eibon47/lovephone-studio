@@ -21,7 +21,7 @@ function formatBytes(bytes) {
 export function renderPreviewActions(config, uiState) {
   const installHint = uiState.installAvailable
     ? '当前浏览器支持直接安装。'
-    : '也可以先打开独立小手机，再从浏览器菜单选择“安装应用”。';
+    : '当前窗口没有直接安装入口。请在 Chrome、Edge 或 Safari 中打开后，从浏览器菜单安装。';
   const storage = uiState.storageStatus || {};
   const storageUsage = storage.quotaBytes
     ? `${formatBytes(storage.usedBytes)} / ${formatBytes(storage.quotaBytes)}`

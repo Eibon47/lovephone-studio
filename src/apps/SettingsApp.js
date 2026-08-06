@@ -17,11 +17,13 @@ import {
   roleProfileId
 } from '../services/aiProfileScope.js?v=app-config-45';
 import {
-  clearMusicSession,
+  checkQrLogin,
+  clearMusicCookie,
   musicBaseUrl,
-  musicFetchJson,
-  musicPostJson
-} from '../services/musicService.js?v=app-config-49';
+  normalizeMusicApiUrl,
+  startQrLogin,
+  testMusicApi
+} from '../services/musicService.js?v=app-config-91';
 import { searchWeatherCity } from '../services/weatherService.js?v=app-config-52';
 
 const colors = ['#7fb59a', '#6b9ec9', '#9a88b8', '#d39c77', '#d98fa5'];
@@ -118,6 +120,7 @@ function aiScopeDetails(config, osState = {}) {
 }
 
 function renderAISettings(config, osState = {}) {
+  const onlineRuntime = !['127.0.0.1', 'localhost'].includes(globalThis.location?.hostname || '');
   const providers = selectedAiProviders(config);
   const scope = aiScopeDetails(config, osState);
   const activeId = providers.some(provider => provider.id === scope.providerId)
@@ -170,7 +173,7 @@ function renderAISettings(config, osState = {}) {
       </select>
     </label>
     <label class="settings-control-row">
-      <span><strong>API Key</strong><small>${scope.character ? '仅用于这个角色' : '仅用于全局默认'}，刷新页面不会回显</small></span>
+      <span><strong>API Key</strong><small>${onlineRuntime ? '仅保存在当前浏览器会话，关闭浏览器后需重新填写' : `${scope.character ? '仅用于这个角色' : '仅用于全局默认'}，刷新页面不会回显`}</small></span>
       <input
         type="password"
         data-ai-api-key
@@ -201,7 +204,7 @@ function renderAISettings(config, osState = {}) {
       <button type="button" data-ai-connect>连接并测试</button>
       <span data-ai-live-status>${escapeHtml(statusText)}</span>
     </div>
-    <p class="settings-security-note">当前配置标识：${escapeHtml(profileId)}。密钥不会写入配置、导出 JSON 或浏览器存储；桌面版使用 Windows 当前用户加密保存。</p>
+    <p class="settings-security-note">当前配置标识：${escapeHtml(profileId)}。密钥不会写入配置或导出 JSON。${onlineRuntime ? '在线版仅在当前浏览器会话中使用，并通过本站 AI 网关转发。' : '桌面版使用 Windows 当前用户加密保存。'}</p>
   `, connected ? 'is-connected' : 'needs-config');
 }
 
@@ -209,22 +212,25 @@ function renderMusicSettings(config, osState = {}) {
   if (!config.apps?.music?.enabled) return '';
   const music = config.apps.music;
   const status = osState.musicConnectionMessage
-    || (music.apiBaseUrl ? '等待连接本机音乐服务' : '等待本机音乐服务');
+    || (music.onlineEnabled && music.apiBaseUrl ? '在线音乐已配置，建议先测试连接' : '本地音乐已可用');
   return settingsGroup('♪', '音乐服务', status, `
-    ${settingInput('apps.music.apiBaseUrl', '本机服务地址', music.apiBaseUrl, {
+    ${settingToggle('apps.music.onlineEnabled', '启用在线音乐', music.onlineEnabled, '关闭后仅保留本地上传和浏览器播放。')}
+    ${settingInput('apps.music.apiBaseUrl', '兼容 API 地址', music.apiBaseUrl, {
       type: 'url',
-      placeholder: 'http://127.0.0.1:5188',
-      desc: '通过本机桥接调用网易云官方 CLI，凭据不会进入小手机。'
+      placeholder: 'https://your-music-api.example',
+      desc: '填写你自己部署或信任的 NeteaseCloudMusicApi 兼容 HTTPS 地址。'
     })}
     ${settingToggle('apps.music.showRecommendations', '首页推荐', music.showRecommendations)}
     ${settingToggle('apps.music.showLyrics', '歌词入口', music.showLyrics)}
     <div class="ai-connection-actions music-connection-actions">
       <button type="button" data-music-test>测试音乐连接</button>
-      <button type="button" data-music-login>打开登录窗口</button>
+      <button type="button" data-music-login ${music.onlineEnabled && music.apiBaseUrl ? '' : 'disabled'}>扫码登录网易云</button>
+      ${osState.musicLoggedIn ? '<button type="button" data-music-logout>退出音乐登录</button>' : ''}
       <span data-music-live-status>${escapeHtml(status)}</span>
     </div>
-    <p class="settings-security-note">只允许本机 LovePhone 页面建立随机会话，不会在配置中保存音乐服务令牌。</p>
-  `, osState.musicBridgeAvailable ? 'is-connected' : 'needs-config');
+    ${osState.musicQrImage ? `<div class="music-qr-panel"><img src="${escapeHtml(osState.musicQrImage)}" alt="网易云登录二维码" /><small>${escapeHtml(osState.musicQrMessage || '请使用网易云音乐 App 扫码并确认')}</small></div>` : ''}
+    <p class="settings-security-note">本地音乐只保存在当前设备。扫码登录会把凭证保存在当前浏览器，并传给你填写的音乐 API；不要使用不可信的公共服务。</p>
+  `, music.onlineEnabled && music.apiBaseUrl ? 'is-connected' : 'needs-config');
 }
 
 function renderWeatherSettings(config) {
@@ -282,6 +288,48 @@ function renderDataSettings(config) {
       <label>导入配置<input type="file" accept="application/json,.json" data-settings-import /></label>
     </div>
   `);
+}
+
+function renderPhoneManagement(osState = {}) {
+  const backupCount = Number(osState.storageStatus?.backupCount) || 0;
+  const installText = osState.installAvailable
+    ? '可直接安装为桌面小手机'
+    : '请在 Chrome、Edge 或 Safari 中安装到设备';
+  return settingsGroup('⌂', '手机管理', installText, `
+    <div class="settings-data-summary">
+      <span><strong>本地备份</strong><small>当前保留 ${backupCount} 份自动或手动备份</small></span>
+      <b>${backupCount ? '已保护' : '建议创建'}</b>
+    </div>
+    <div class="settings-data-actions settings-phone-actions">
+      <button type="button" data-settings-backup>创建备份</button>
+      <button type="button" data-settings-restore ${backupCount ? '' : 'disabled'}>恢复最近备份</button>
+      <button type="button" data-settings-install>安装小手机</button>
+    </div>
+    <p class="settings-security-note">所有内容默认保存在当前设备。更换设备或清理浏览器前，请先导出配置或创建备份。</p>
+  `, backupCount ? 'is-connected' : 'needs-config');
+}
+
+function renderRuntimeInfo(config, osState = {}) {
+  const hostname = globalThis.location?.hostname || '';
+  const online = hostname && !['127.0.0.1', 'localhost'].includes(hostname);
+  const aiConnected = Object.values(osState.aiProviderStatuses || {}).some(status => status?.configured)
+    || Object.values(osState.aiProfileStatuses || {}).some(status => status?.configured);
+  const aiModelSelected = Object.values(config.aiProviders?.profiles || {}).some(profile => profile?.model)
+    || [config.character, ...(config.characters || [])]
+      .some(character => Object.values(character?.aiProfiles || {}).some(profile => profile?.model));
+  return settingsGroup('◎', online ? '网页运行说明' : '本机预览说明', online
+    ? '数据留在当前浏览器，不会自动同步到云端'
+    : '当前在本机预览，可先验证配置再发布', `
+    <div class="settings-data-summary">
+      <span><strong>陪伴数据</strong><small>聊天、记忆、日记、图片和布局都保存在当前设备的浏览器数据库。</small></span>
+      <b>本地优先</b>
+    </div>
+    <div class="settings-data-summary">
+      <span><strong>AI 连接</strong><small>${online ? '网页版本的 API Key 只保存在当前浏览器会话，关闭浏览器后需重新填写。' : '本机版本可在当前设备中使用已连接的 AI 配置。'}</small></span>
+      <b>${aiConnected ? '已连接' : aiModelSelected ? '待连接' : '待配置'}</b>
+    </div>
+    <p class="settings-security-note">当前版本还没有账号和云同步。${config.apps?.settings?.exportImport ? '要换设备时，请导出 JSON 并在新设备导入；导出文件不会包含 API Key。' : '当前已关闭配置导出功能，请先在工坊中开启后再更换设备。'}</p>
+  `, aiConnected ? 'is-connected' : 'needs-config');
 }
 
 function renderStartupHealth(osState = {}) {
@@ -364,6 +412,8 @@ export const SettingsApp = {
         </header>
         ${themePrelude}
         <div class="phone-settings-list">
+          ${renderPhoneManagement(osState)}
+          ${renderRuntimeInfo(config, osState)}
           ${renderStartupHealth(osState)}
           ${config.apps.settings.themeControls ? renderAppearanceSettings(config) : ''}
           ${config.apps.settings.apiProfiles ? renderAISettings(config, osState) : ''}
@@ -378,6 +428,9 @@ export const SettingsApp = {
   },
 
   bind(container, config, handlers, osState = {}) {
+    container.querySelector('[data-settings-backup]')?.addEventListener('click', () => handlers.backup?.());
+    container.querySelector('[data-settings-restore]')?.addEventListener('click', () => handlers.restoreBackup?.());
+    container.querySelector('[data-settings-install]')?.addEventListener('click', () => handlers.install?.());
     container.querySelector('[data-startup-health-check]')?.addEventListener('click', () => {
       handlers.checkStartupHealth?.();
     });
@@ -469,31 +522,36 @@ export const SettingsApp = {
 
     if (!osState.aiStatusLoaded) refreshAiStatuses();
 
+    let musicQrTimer = null;
+    const musicBaseFromForm = () => normalizeMusicApiUrl(
+      container.querySelector('[data-settings-value="apps.music.apiBaseUrl"]')?.value
+      || musicBaseUrl(handlers.getConfig?.() || config)
+    );
     const testMusicConnection = async ({ quiet = false } = {}) => {
       const latest = handlers.getConfig?.() || config;
-      const base = musicBaseUrl(latest);
+      const base = musicBaseFromForm();
       const button = container.querySelector('[data-music-test]');
       const liveStatus = container.querySelector('[data-music-live-status]');
       if (button) button.disabled = true;
-      if (liveStatus && !quiet) liveStatus.textContent = '正在连接本机音乐服务…';
+      if (liveStatus && !quiet) liveStatus.textContent = '正在测试在线音乐服务…';
       try {
-        clearMusicSession(base);
-        const result = await musicFetchJson(`${base}/health`);
+        if (!latest.apps.music.onlineEnabled) throw new Error('请先开启在线音乐，再填写兼容 API 地址。');
+        if (!base) throw new Error('请输入可信的 HTTPS 兼容 API 地址。');
+        const result = await testMusicApi(base);
         handlers.updatePhoneState?.({
           musicStatusLoaded: true,
           musicBridgeAvailable: true,
-          musicConnectionMessage: result.authenticated
-            ? '音乐服务已连接，网易云登录有效'
-            : '音乐服务在线，请先完成网易云登录'
+          musicConnectionMessage: result.message || '在线音乐服务已连接'
         });
+        handlers.updatePath?.('apps.music.apiBaseUrl', base, { keepPhone: true, noRender: true });
       } catch (error) {
         if (button) button.disabled = false;
-        if (liveStatus) liveStatus.textContent = error.message || '本机音乐服务未启动';
+        if (liveStatus) liveStatus.textContent = error.message || '在线音乐服务无法连接';
         if (quiet) {
           handlers.updatePhoneState?.({
             musicStatusLoaded: true,
             musicBridgeAvailable: false,
-            musicConnectionMessage: '本机音乐服务未启动或尚未登录'
+            musicConnectionMessage: '在线音乐尚未配置或无法连接'
           });
         }
       }
@@ -509,18 +567,39 @@ export const SettingsApp = {
       const button = event.currentTarget;
       const liveStatus = container.querySelector('[data-music-live-status]');
       button.disabled = true;
-      if (liveStatus) liveStatus.textContent = '正在打开网易云登录窗口…';
+      if (liveStatus) liveStatus.textContent = '正在获取网易云登录二维码…';
       try {
-        const latest = handlers.getConfig?.() || config;
-        const result = await musicPostJson(musicBaseUrl(latest), '/login-window', {});
-        if (liveStatus) {
-          liveStatus.textContent = result.message || '请在新窗口扫码登录，完成后再测试连接';
-        }
+        const base = musicBaseFromForm();
+        if (!base) throw new Error('请先填写可信的 HTTPS 兼容 API 地址。');
+        const result = await startQrLogin(base);
+        handlers.updatePhoneState?.({ musicQrImage: result.image, musicQrMessage: '请用网易云音乐 App 扫码并确认', musicConnectionMessage: '等待扫码确认…' });
+        clearInterval(musicQrTimer);
+        musicQrTimer = setInterval(async () => {
+          try {
+            const status = await checkQrLogin(base, result.key);
+            if (status.code === 803) {
+              clearInterval(musicQrTimer);
+              handlers.updatePhoneState?.({ musicQrImage: '', musicQrMessage: '', musicLoggedIn: true, musicConnectionMessage: `${status.nickname || '网易云账号'} 已登录` });
+            } else if (status.code === 800) {
+              clearInterval(musicQrTimer);
+              handlers.updatePhoneState?.({ musicQrImage: '', musicQrMessage: '', musicConnectionMessage: '二维码已过期，请重新获取。' });
+            } else if (status.code === 802) {
+              handlers.updatePhoneState?.({ musicQrMessage: '已扫码，请在网易云 App 确认登录' });
+            }
+          } catch {
+            clearInterval(musicQrTimer);
+          }
+        }, 2000);
       } catch (error) {
-        if (liveStatus) liveStatus.textContent = error.message || '无法打开登录窗口';
+        if (liveStatus) liveStatus.textContent = error.message || '无法获取登录二维码';
       } finally {
         button.disabled = false;
       }
+    });
+    container.querySelector('[data-music-logout]')?.addEventListener('click', async () => {
+      clearInterval(musicQrTimer);
+      await clearMusicCookie();
+      handlers.updatePhoneState?.({ musicLoggedIn: false, musicQrImage: '', musicQrMessage: '', musicConnectionMessage: '已退出当前浏览器中的音乐登录。' });
     });
 
     container.querySelector('[data-ai-connect]')?.addEventListener('click', async event => {
@@ -562,6 +641,7 @@ export const SettingsApp = {
           aiBridgeAvailable: true,
           aiConnectionMessage: `${scope.character ? `${scope.character.name} · ` : ''}${result.answer || '连接成功'}`
         });
+        handlers.markPhoneSetup?.('ai');
       } catch (error) {
         button.disabled = false;
         if (liveStatus) liveStatus.textContent = friendlyAiError(error, '连接失败，请检查填写内容。');

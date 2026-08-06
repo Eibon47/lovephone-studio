@@ -1,9 +1,9 @@
-import { CharacterApp } from '../apps/CharacterApp.js?v=app-config-61';
-import { ChatApp } from '../apps/ChatApp.js?v=app-config-72';
-import { SettingsApp } from '../apps/SettingsApp.js?v=app-config-61';
-import { MusicApp } from '../apps/MusicApp.js?v=app-config-83';
+import { CharacterApp } from '../apps/CharacterApp.js?v=app-config-96';
+import { ChatApp } from '../apps/ChatApp.js?v=app-config-95';
+import { SettingsApp } from '../apps/SettingsApp.js?v=app-config-93';
+import { MusicApp } from '../apps/MusicApp.js?v=app-config-93';
 import { PlaceholderApp } from '../apps/PlaceholderApp.js?v=app-config-61';
-import { MemoryApp } from '../apps/MemoryApp.js?v=app-config-77';
+import { MemoryApp } from '../apps/MemoryApp.js?v=app-config-96';
 import { DiaryApp } from '../apps/DiaryApp.js?v=app-config-83';
 import { AnniversaryApp } from '../apps/AnniversaryApp.js?v=app-config-83';
 import { GoodnightApp } from '../apps/GoodnightApp.js?v=app-config-83';
@@ -39,7 +39,6 @@ export const APP_REGISTRY = [
     name: '音乐',
     icon: 'music',
     enabledBy: 'components.music',
-    requiresRuntimeCapability: 'experimentalMusic',
     dock: false,
     component: MusicApp
   },

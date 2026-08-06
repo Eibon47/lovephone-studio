@@ -5,7 +5,7 @@ import { checkStartupHealth } from '../src/services/startupHealthService.js';
 
 const config = {
   apps: {
-    music: { enabled: true }
+    music: { enabled: true, onlineEnabled: true, apiBaseUrl: 'https://music.example.test' }
   }
 };
 
@@ -31,7 +31,9 @@ test('startup health exposes problems independently', async () => {
     checkAi: async () => {
       throw new Error('offline');
     },
-    checkMusic: async () => ({ authenticated: false })
+    checkMusic: async () => {
+      throw new Error('music offline');
+    }
   });
 
   assert.equal(health.storage.status, 'error');

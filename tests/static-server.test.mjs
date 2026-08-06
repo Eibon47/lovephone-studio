@@ -22,6 +22,10 @@ test('desktop static server serves the app with security headers and blocks trav
     assert.equal(index.headers.get('x-frame-options'), 'DENY');
     assert.match(await index.text(), /LovePhone Studio/);
 
+    const module = await fetch(`${base}/src/main.js`);
+    assert.equal(module.status, 200);
+    assert.equal(module.headers.get('cache-control'), 'no-cache');
+
     const method = await fetch(`${base}/index.html`, { method: 'POST' });
     assert.equal(method.status, 405);
 

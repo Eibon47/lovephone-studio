@@ -1,5 +1,5 @@
 import { getAiProviderStatuses } from './aiService.js?v=app-config-57';
-import { musicFetchJson } from './musicService.js?v=app-config-49';
+import { testMusicApi } from './musicService.js?v=app-config-91';
 
 function result(status, message) {
   return { status, message };
@@ -8,12 +8,13 @@ function result(status, message) {
 export async function checkStartupHealth(config, storageStatus = {}, dependencies = {}) {
   const online = dependencies.online ?? navigator.onLine;
   const checkAi = dependencies.checkAi || (() => getAiProviderStatuses(config));
-  const checkMusic = dependencies.checkMusic || (() => musicFetchJson('/health'));
+  const musicConfigured = Boolean(config.apps?.music?.onlineEnabled && config.apps?.music?.apiBaseUrl);
+  const checkMusic = dependencies.checkMusic || (() => testMusicApi(config.apps?.music?.apiBaseUrl));
   const musicEnabled = Boolean(config.apps?.music?.enabled);
 
   const [aiCheck, musicCheck] = await Promise.allSettled([
     checkAi(),
-    musicEnabled ? checkMusic() : Promise.resolve(null)
+    musicConfigured ? checkMusic() : Promise.resolve(null)
   ]);
 
   const storage = storageStatus.state === 'error'
@@ -25,16 +26,15 @@ export async function checkStartupHealth(config, storageStatus = {}, dependencie
     ? result('ok', '网络连接可用')
     : result('error', '当前处于断网状态');
   const ai = aiCheck.status === 'fulfilled'
-    ? result('ok', 'AI 本机服务已连接')
-    : result('error', 'AI 本机服务未启动');
+    ? result('ok', 'AI 服务已连接')
+    : result('error', 'AI 服务无法连接，请检查网络或本机桥接');
   const music = !musicEnabled
     ? result('skipped', '音乐 App 未启用')
+    : !musicConfigured
+      ? result('ok', '本地音乐可用；在线音乐尚未配置')
     : musicCheck.status === 'fulfilled'
-      ? result(
-          musicCheck.value?.authenticated ? 'ok' : 'warning',
-          musicCheck.value?.authenticated ? '音乐服务和网易云登录正常' : '音乐服务在线，尚未登录网易云'
-        )
-      : result('error', '音乐本机服务未启动');
+      ? result('ok', '在线音乐服务已连接')
+      : result('warning', '在线音乐服务无法连接，本地音乐仍可用');
 
   return {
     checkedAt: new Date().toISOString(),

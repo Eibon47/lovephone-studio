@@ -11,7 +11,6 @@ let mainWindow = null;
 let runtimeProcess = null;
 const runtimeToken = randomBytes(24).toString('hex');
 const runtimeProof = createHash('sha256').update(runtimeToken).digest('hex');
-const experimentalMusic = !app.isPackaged || process.env.LOVEPHONE_EXPERIMENTAL_MUSIC === '1';
 
 if (!singleInstance) app.quit();
 
@@ -23,12 +22,6 @@ function runtimeWorkingDirectory() {
   return app.isPackaged ? process.resourcesPath : projectRoot;
 }
 
-function mpvDirectory() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'mpv')
-    : (process.env.MPV_DIRECTORY || 'C:\\Program Files\\MPV Player');
-}
-
 function startRuntime() {
   const root = appRoot();
   runtimeProcess = spawn(process.execPath, [path.join(root, 'server', 'desktop-runtime.mjs')], {
@@ -38,15 +31,10 @@ function startRuntime() {
       ELECTRON_RUN_AS_NODE: '1',
       LOVEPHONE_APP_ROOT: root,
       LOVEPHONE_WEB_PORT: '5177',
-      LOVEPHONE_MUSIC_PORT: '5188',
       LOVEPHONE_AI_PORT: '5189',
       LOVEPHONE_DESKTOP_INSTANCE_TOKEN: runtimeToken,
       LOVEPHONE_TRUSTED_ORIGINS: 'http://127.0.0.1:5177',
-      LOVEPHONE_EXPERIMENTAL_MUSIC: experimentalMusic ? '1' : '0',
-      ...(experimentalMusic ? {
-        NCM_CLI_JS: path.join(root, 'node_modules', '@music163', 'ncm-cli', 'dist', 'index.js'),
-        MPV_DIRECTORY: mpvDirectory()
-      } : {})
+      LOVEPHONE_EXPERIMENTAL_MUSIC: '0'
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true
@@ -62,7 +50,7 @@ function startRuntime() {
       'LovePhone OS 无法启动',
       code === 0
         ? '本机服务意外停止，请重新打开应用。'
-        : '本机服务启动失败。请确认 5177、5188、5189 端口没有被其他程序占用。'
+        : '本机服务启动失败。请确认 5177、5189 端口没有被其他程序占用。'
     );
     app.quit();
   });

@@ -1,7 +1,8 @@
-import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-62';
+import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-95';
 import { AI_PROVIDER_CATALOG, DEFAULT_AI_PROVIDERS } from './aiProviderCatalog.js?v=app-config-35';
-import { normalizeChatSessionData } from '../services/chatSessionService.js?v=app-config-59';
+import { normalizeChatSessionData } from '../services/chatSessionService.js?v=app-config-95';
 import { normalizeCustomization } from '../services/customizationModel.js';
+import { normalizePhoneSetup } from '../services/phoneSetupService.js';
 
 // Cache-bumped default schema keeps older saved phones compatible with new widgets.
 const componentKeys = ['chat', 'music', 'memory', 'diary', 'anniversary', 'goodnight'];
@@ -58,6 +59,18 @@ function normalizeCharacterList(value) {
       usedIds.add(id);
       return { ...item, id };
     });
+}
+
+function sanitizeAiProfileMap(value) {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([id, profile]) => /^[a-zA-Z0-9_-]{2,120}$/.test(id) && profile && typeof profile === 'object')
+      .map(([id, profile]) => [id, {
+        model: typeof profile.model === 'string' ? profile.model.trim().slice(0, 160) : '',
+        baseUrl: typeof profile.baseUrl === 'string' ? profile.baseUrl.trim().slice(0, 300) : ''
+      }])
+  );
 }
 
 function migrateChatCharacterIds(messages, mainCharacter, characters) {
@@ -144,8 +157,8 @@ function mergeAiProviders(baseProviders, sourceProviders = {}) {
         .filter(value => /^[a-zA-Z0-9_-]{2,120}$/.test(value))
     )],
     profiles: {
-      ...(baseProviders.profiles || {}),
-      ...(sourceProviders.profiles || {})
+      ...sanitizeAiProfileMap(baseProviders.profiles),
+      ...sanitizeAiProfileMap(sourceProviders.profiles)
     },
     global: {
       ...baseProviders.global,
@@ -179,8 +192,8 @@ export function normalizeConfig(input) {
       ...(source.character || {}),
       id: safeCharacterId(source.character?.id, 'character-main'),
       aiProfiles: {
-        ...(base.character.aiProfiles || {}),
-        ...(source.character?.aiProfiles || {})
+        ...sanitizeAiProfileMap(base.character.aiProfiles),
+        ...sanitizeAiProfileMap(source.character?.aiProfiles)
       }
     },
     characters: normalizeCharacterList(source.characters),
@@ -204,10 +217,37 @@ export function normalizeConfig(input) {
     normalized.apps[key] = mergeAppConfig(base.apps[key], source.apps?.[key]);
   });
 
+  // The old desktop-only bridge was intentionally retired. Keep user-entered
+  // compatible API addresses, but do not silently point mobile phones at a
+  // computer-local service after migration.
+  if (normalized.apps.music.source === 'official-ncm-cli') {
+    normalized.apps.music.source = 'netease-compatible-api';
+    if (/^https?:\/\/(127\.0\.0\.1|localhost):5188\/?$/i.test(normalized.apps.music.apiBaseUrl || '')) {
+      normalized.apps.music.apiBaseUrl = '';
+    }
+    normalized.apps.music.onlineEnabled = Boolean(normalized.apps.music.apiBaseUrl);
+  } else {
+    normalized.apps.music.onlineEnabled = Boolean(normalized.apps.music.onlineEnabled);
+  }
+  if (
+    /^https?:\/\/(127\.0\.0\.1|localhost):5188\/?$/i.test(normalized.apps.music.apiBaseUrl || '')
+    && !normalized.apps.music.onlineEnabled
+  ) {
+    normalized.apps.music.apiBaseUrl = '';
+  }
+
+  // The old value forced every exported configuration to call the creator's
+  // local bridge after it was opened on a deployed website. Empty now selects
+  // the appropriate runtime automatically in aiService.
+  if (/^http:\/\/(127\.0\.0\.1|localhost):5189\/?$/i.test(normalized.aiProviders.bridgeUrl || '')) {
+    normalized.aiProviders.bridgeUrl = '';
+  }
+
   // New defaults are merged per field above. Never replace a user's complete
   // App configuration just because the template or schema version changed.
   normalized.meta.templateId = source.meta?.templateId || base.meta.templateId;
   normalized.meta.appFlowVersion = base.meta.appFlowVersion;
+  normalized.meta.phoneSetup = normalizePhoneSetup(source.meta?.phoneSetup || base.meta.phoneSetup);
 
   componentKeys.forEach(key => {
     const appEnabled = normalized.apps[key]?.enabled;
@@ -231,8 +271,8 @@ export function normalizeConfig(input) {
     ...base.character,
     ...character,
     aiProfiles: {
-      ...(base.character.aiProfiles || {}),
-      ...(character.aiProfiles || {})
+      ...sanitizeAiProfileMap(base.character.aiProfiles),
+      ...sanitizeAiProfileMap(character.aiProfiles)
     },
     avatar: {
       ...base.character.avatar,

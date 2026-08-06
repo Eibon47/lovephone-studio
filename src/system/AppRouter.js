@@ -1,4 +1,4 @@
-import { getAppById, isAppEnabled } from './appRegistry.js?v=app-config-83';
+import { getAppById, isAppEnabled } from './appRegistry.js?v=app-config-96';
 import { PlaceholderApp } from '../apps/PlaceholderApp.js?v=app-config-16';
 
 export function renderAppRouter(config, osState, handlers) {

@@ -5,7 +5,7 @@ import { renderStatusBar } from '../system/StatusBar.js';
 import { localDateKey, makeId, timeLabel } from './appData.js?v=app-config-40';
 import { getAiProvider } from '../config/aiProviderCatalog.js?v=app-config-35';
 import { streamAiChat } from '../services/aiService.js?v=app-config-57';
-import { friendlyAiError } from '../services/aiErrors.js?v=app-config-36';
+import { friendlyAiError } from '../services/aiErrors.js?v=app-config-95';
 import {
   extractAutoMemory,
   isDuplicateMemory
@@ -20,7 +20,11 @@ import {
   activeChatSession,
   messagesForSession,
   sessionsForCharacter
-} from '../services/chatSessionService.js?v=app-config-56';
+} from '../services/chatSessionService.js?v=app-config-95';
+import {
+  characterPresence,
+  latestCharacterGreeting
+} from '../services/characterPresenceService.js?v=app-config-1';
 
 const generationSessions = new Map();
 const speechSessions = new Map();
@@ -66,6 +70,31 @@ function savedMessages(config, osState = {}) {
     return osState.ephemeralChatMessages?.[session.id] || [];
   }
   return messagesForSession(config.apps.chat, characterId, session.id);
+}
+
+function savedDraft(config, osState, sessionId) {
+  if (!sessionId) return '';
+  return config.apps.chat.drafts?.[sessionId]
+    ?? osState.chatDrafts?.[sessionId]
+    ?? '';
+}
+
+export function chatFailureAction(error) {
+  const message = friendlyAiError(error);
+  if (/API Key|没有找到这个模型|设置中填写|本地 AI 服务/.test(message)) return 'settings';
+  return 'retry';
+}
+
+function renderChatStatus(osState) {
+  if (!osState.chatStatus) return '';
+  const action = osState.chatStatusAction;
+  return `
+    <div class="chat-ai-status" role="status">
+      <p>${escapeHtml(osState.chatStatus)}</p>
+      ${action === 'settings' ? '<button type="button" data-chat-open-settings>前往 AI 设置</button>' : ''}
+      ${action === 'retry' && osState.chatFailedRequest ? '<button type="button" data-chat-retry-last>重新发送</button>' : ''}
+    </div>
+  `;
 }
 
 export function buildChatSystemPrompt(config, character) {
@@ -134,6 +163,16 @@ function messagesFor(config, osState, character) {
   }
   const saved = savedMessages(config, osState);
   if (saved.length) return saved;
+  const greeting = latestCharacterGreeting(config, character.id);
+  if (greeting) {
+    return [{
+      id: `greeting-${greeting.id}`,
+      from: 'character',
+      text: greeting.message,
+      createdAt: greeting.createdAt,
+      proactive: true
+    }];
+  }
   return [{
     id: 'welcome',
     from: 'character',
@@ -143,7 +182,7 @@ function messagesFor(config, osState, character) {
 }
 
 function renderMessageActions(message, generating) {
-  if (message.id === 'welcome' || message.appearancePreview) return '';
+  if (message.id === 'welcome' || message.proactive || message.appearancePreview) return '';
   return `
     <span class="chat-message-actions">
       ${message.from === 'character' ? `
@@ -172,12 +211,13 @@ function renderMessages(config, osState, character) {
   `).join('');
 }
 
-function renderHeader(theme, config, character, avatar) {
+function renderHeader(theme, config, character, avatar, osState = {}) {
+  const presence = characterPresence(config, character, osState);
   if (theme === 'qq') return `
     <header class="themed-chat-nav qq-chat-nav">
       <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img src="${avatar}" alt="" />
-      <span><strong>${escapeHtml(character.name)}</strong><small>在线 · AI 陪伴中</small></span>
+      <span><strong>${escapeHtml(character.name)}</strong><small>${escapeHtml(presence.label)}</small></span>
       <button type="button" aria-label="通话">♧</button>
       <span></span>
     </header>`;
@@ -185,7 +225,7 @@ function renderHeader(theme, config, character, avatar) {
     <header class="themed-chat-nav instagram-chat-nav">
       <button type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img src="${avatar}" alt="" />
-      <span><strong>${escapeHtml(character.name)}</strong><small>现在在线</small></span>
+      <span><strong>${escapeHtml(character.name)}</strong><small>${escapeHtml(presence.label)}</small></span>
       <button type="button" aria-label="语音通话">♧</button>
       <span></span>
     </header>`;
@@ -208,7 +248,7 @@ function renderHeader(theme, config, character, avatar) {
     <header class="chat-top chat-top-with-actions">
       <button class="chat-back" type="button" data-chat-list-back aria-label="返回聊天列表">‹</button>
       <img class="chat-avatar" src="${avatar}" alt="" />
-      <div><h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(character.relationship)} · ${escapeHtml(character.speakingStyle)}</p></div>
+      <div><h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(presence.label)} · ${escapeHtml(character.relationship)}</p></div>
       <span></span>
     </header>`;
 }
@@ -314,9 +354,10 @@ function chatListSummary(config, osState, character) {
         : osState.ephemeralChatMessages?.[session.id] || [])
     : [];
   const latest = messages.at(-1);
+  const greeting = latestCharacterGreeting(config, character.id);
   return {
-    text: latest?.text || character.greeting || '点击开始聊天',
-    updatedAt: latest?.createdAt || session?.updatedAt || '',
+    text: latest?.text || greeting?.message || character.greeting || '点击开始聊天',
+    updatedAt: latest?.createdAt || greeting?.createdAt || session?.updatedAt || '',
     sessionCount: sessionsForCharacter(config.apps.chat, character.id).length
   };
 }
@@ -334,6 +375,7 @@ function renderCharacterChatList(config, osState, theme) {
       <div class="chat-character-list" role="list">
         ${characters.map(character => {
           const summary = chatListSummary(config, osState, character);
+          const presence = characterPresence(config, character, osState);
           return `
             <button
               class="chat-character-row"
@@ -348,7 +390,7 @@ function renderCharacterChatList(config, osState, theme) {
                   <time>${summary.updatedAt ? escapeHtml(timeLabel(summary.updatedAt)) : ''}</time>
                 </span>
                 <small>${escapeHtml(summary.text)}</small>
-                <em>${escapeHtml(character.relationship || '陪伴者')} · ${summary.sessionCount} 个会话</em>
+                <em>${escapeHtml(presence.label)} · ${summary.sessionCount} 个会话</em>
               </span>
               <i>›</i>
             </button>
@@ -420,13 +462,13 @@ export const ChatApp = {
     const provider = getAiProvider(providerId);
     const key = runtimeKey(config, osState);
     const listening = speechSessions.has(key);
-    const draft = osState.chatDrafts?.[key] || '';
+    const draft = savedDraft(config, osState, key);
     const session = currentSession(config, osState);
     if (osState.chatView === 'sessions') {
       return `
         <section class="phone-screen phone-chat chat-layout-${theme}">
           ${renderStatusBar('chat-statusbar')}
-          ${renderHeader(theme, config, character, avatar)}
+          ${renderHeader(theme, config, character, avatar, osState)}
           ${renderSessionManager(config, osState, character)}
         </section>
       `;
@@ -434,7 +476,7 @@ export const ChatApp = {
     return `
       <section class="phone-screen phone-chat chat-layout-${theme}">
         ${renderStatusBar('chat-statusbar')}
-        ${renderHeader(theme, config, character, avatar)}
+        ${renderHeader(theme, config, character, avatar, osState)}
         <div class="chat-session-tools">
           <button type="button" data-chat-session-list ${generating ? 'disabled' : ''}>会话</button>
           <span>${escapeHtml(session?.title || '默认会话')} · ${escapeHtml(provider?.name || 'AI 未配置')}</span>
@@ -443,7 +485,7 @@ export const ChatApp = {
         <div class="chat-body" data-chat-body>
           ${renderMessages(config, osState, character)}
         </div>
-        ${osState.chatStatus ? `<p class="chat-ai-status">${escapeHtml(osState.chatStatus)}</p>` : ''}
+        ${renderChatStatus(osState)}
         ${renderQuickReplies(config, generating)}
         ${config.apps.chat.inputBox ? `
           <form class="functional-chat-composer" data-chat-form>
@@ -578,12 +620,15 @@ export const ChatApp = {
       const nextActive = sessionsForCharacter({ ...chat, sessions: remaining }, characterId)[0];
       const ephemeralChatMessages = { ...(osState.ephemeralChatMessages || {}) };
       delete ephemeralChatMessages[removeId];
+      const drafts = { ...(chat.drafts || {}) };
+      delete drafts[removeId];
       osState.ephemeralChatMessages = ephemeralChatMessages;
       osState.chatSessionDeleteConfirmId = null;
       handlers.updatePath?.('apps.chat', {
         ...chat,
         sessions: remaining,
         messages: (chat.messages || []).filter(message => message.sessionId !== removeId),
+        drafts,
         activeSessionIds: {
           ...(chat.activeSessionIds || {}),
           [characterId]: nextActive?.id
@@ -596,6 +641,11 @@ export const ChatApp = {
         ...(osState.chatDrafts || {}),
         [key]: input.value
       };
+      const latest = handlers.getConfig?.() || config;
+      handlers.updatePath?.('apps.chat.drafts', {
+        ...(latest.apps.chat.drafts || {}),
+        [key]: input.value
+      }, { noRender: true });
     });
 
     const startGeneration = async currentMessages => {
@@ -606,6 +656,8 @@ export const ChatApp = {
       const avatar = getCharacterAvatar(character);
       const payload = buildChatRequest(config, character, currentMessages);
       osState.chatStatus = '';
+      osState.chatStatusAction = '';
+      osState.chatFailedRequest = null;
       container.querySelector('.chat-ai-status')?.remove();
 
       const controller = new AbortController();
@@ -666,6 +718,12 @@ export const ChatApp = {
           : currentMessages;
         generationSessions.delete(key);
         osState.chatStatus = friendlyAiError(error);
+        osState.chatStatusAction = stopped ? '' : chatFailureAction(error);
+        osState.chatFailedRequest = stopped ? null : {
+          sessionId,
+          characterId,
+          messageId: currentMessages.filter(message => message.from === 'user').at(-1)?.id || ''
+        };
         saveMessages(nextMessages, { keepPhone: true });
       } finally {
         generationSessions.delete(key);
@@ -691,6 +749,11 @@ export const ChatApp = {
         ...(osState.chatDrafts || {}),
         [key]: ''
       };
+      const latest = handlers.getConfig?.() || config;
+      handlers.updatePath?.('apps.chat.drafts', {
+        ...(latest.apps.chat.drafts || {}),
+        [key]: ''
+      }, { noRender: true });
       saveMessages(nextMessages, { noRender: true });
       const body = container.querySelector('[data-chat-body]');
       if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
@@ -704,6 +767,16 @@ export const ChatApp = {
 
     container.querySelector('[data-chat-stop]')?.addEventListener('click', () => {
       generationSessions.get(key)?.controller.abort();
+    });
+
+    container.querySelector('[data-chat-open-settings]')?.addEventListener('click', () => {
+      handlers.openApp?.('settings');
+    });
+
+    container.querySelector('[data-chat-retry-last]')?.addEventListener('click', async () => {
+      const failed = osState.chatFailedRequest;
+      if (!failed || failed.sessionId !== sessionId || failed.characterId !== characterId) return;
+      await startGeneration(savedMessages(handlers.getConfig?.() || config, osState));
     });
 
     container.querySelectorAll('[data-chat-quick]').forEach(button => {
@@ -736,6 +809,8 @@ export const ChatApp = {
       if (!globalThis.confirm?.(`清空当前会话“${session?.title || '默认会话'}”的全部聊天记录？`)) return;
       generationSessions.get(key)?.controller.abort();
       osState.chatStatus = '';
+      osState.chatStatusAction = '';
+      osState.chatFailedRequest = null;
       saveMessages([], { keepPhone: true });
     });
 

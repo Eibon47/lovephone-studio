@@ -44,11 +44,15 @@ test('role AI metadata survives normalization without any API key field', () => 
   const source = cloneConfig(defaultConfig);
   source.character.aiProviderId = 'custom';
   source.character.aiProfiles = {
-    custom: { model: 'role-model', baseUrl: 'http://127.0.0.1:5190' }
+    custom: { model: 'role-model', baseUrl: 'http://127.0.0.1:5190', apiKey: 'must-be-removed' }
+  };
+  source.aiProviders.profiles.custom = {
+    model: 'global-model', baseUrl: 'https://api.example.com/v1', apiKey: 'must-be-removed-too'
   };
   const config = normalizeConfig(source);
   assert.equal(config.character.aiProfiles.custom.model, 'role-model');
-  assert.equal(JSON.stringify(config.character.aiProfiles).includes('apiKey'), false);
+  assert.equal(config.aiProviders.profiles.custom.model, 'global-model');
+  assert.doesNotMatch(JSON.stringify(config), /"apiKey"\s*:/);
 });
 
 test('speech recognition emits interim and final Chinese text', () => {

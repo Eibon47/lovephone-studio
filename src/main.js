@@ -3,8 +3,8 @@ import { renderAppearancePanel, bindAppearancePanel } from './builder/Appearance
 import { renderCustomizationDrawer } from './builder/CustomizationDrawer.js?v=app-config-84';
 import { renderAiAssistantPanel, bindAiAssistantPanel } from './builder/AiAssistantPanel.js?v=app-config-87';
 import { renderPreviewActions, bindPreviewActions } from './builder/PreviewActions.js?v=app-config-46';
-import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-84';
-import { getEnabledApps } from './system/appRegistry.js?v=app-config-72';
+import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-96';
+import { getEnabledApps } from './system/appRegistry.js?v=app-config-96';
 import {
   createConfigBackup,
   exportConfig,
@@ -15,15 +15,16 @@ import {
   resetConfig,
   restoreLatestConfigBackup,
   saveConfig,
-  setStorageStatusListener
-} from './storage/localConfigStore.js?v=app-config-62';
+  setStorageStatusListener,
+  summarizeImportedConfig
+} from './storage/localConfigStore.js?v=app-config-94';
 import {
   configureAiProvider,
   removeAiProfile,
   streamAiChat,
   testAiProvider
 } from './services/aiService.js?v=app-config-85';
-import { cloneConfig } from './config/defaultConfig.js?v=app-config-85';
+import { cloneConfig } from './config/defaultConfig.js?v=app-config-95';
 import {
   applyBuilderAssistantOperations,
   buildBuilderAssistantSystemPrompt,
@@ -36,15 +37,16 @@ import {
   flushAiProfileDeletes
 } from './services/aiProfileCleanup.js?v=app-config-59';
 import { purgeCharacterData } from './services/characterDataService.js?v=app-config-59';
-import { ensureCharacterChatSession } from './services/chatSessionService.js?v=app-config-59';
+import { ensureCharacterChatSession } from './services/chatSessionService.js?v=app-config-95';
 import {
   getStandaloneUrl,
+  getPwaInstallHelp,
   installPwa,
   isPhoneMode,
   isPwaInstallAvailable,
   setupPwa
 } from './services/pwaService.js?v=app-config-46';
-import { checkStartupHealth } from './services/startupHealthService.js?v=app-config-51';
+import { checkStartupHealth } from './services/startupHealthService.js?v=app-config-92';
 import {
   cloneCustomization,
   createCustomWidgetFromTemplate,
@@ -334,6 +336,13 @@ function updatePhoneState(patch) {
   render({ keepPhone: true });
 }
 
+function confirmConfigImport(config) {
+  const summary = summarizeImportedConfig(config);
+  return window.confirm(
+    `即将覆盖当前小手机：\n\n${summary.title}\n${summary.characters} 个角色 · ${summary.enabledApps} 个 App\n${summary.messages} 条聊天 · ${summary.memories} 条记忆 · ${summary.diaries} 篇日记\n\n当前数据会先自动创建本地备份。确定导入吗？`
+  );
+}
+
 function pushAssistantMessage(role, content) {
   const message = String(content || '').trim();
   if (!message) return;
@@ -495,9 +504,7 @@ function openPhoneApp(appId) {
     .some(appItem => appItem.id === appId);
   if (!available) {
     state.phone.currentApp = 'home';
-    state.ui.statusMessage = appId === 'music'
-      ? '音乐是本地实验功能，不包含在公开安装包中。'
-      : '这个 App 当前未启用。';
+    state.ui.statusMessage = '这个 App 当前未启用。';
     render({ keepPhone: true });
     return;
   }
@@ -683,6 +690,23 @@ function bindPanel(root) {
     },
     openPhoneApp,
     selectCharacter,
+    openCharacterContext: (appId, characterId) => {
+      const characters = [state.config.character, ...(state.config.characters || [])];
+      const index = characters.findIndex(character => character.id === characterId);
+      if (index < 0 || !state.config.apps?.[appId]?.enabled) return;
+      state.config.apps.chat = ensureCharacterChatSession(state.config.apps.chat, characterId);
+      state.config.apps.character.activeCharacterId = characterId;
+      state.phone = {
+        ...state.phone,
+        currentApp: appId,
+        selectedCharacterId: characterId,
+        selectedCharacterIndex: index,
+        chatCharacterId: appId === 'chat' ? characterId : state.phone.chatCharacterId,
+        chatView: appId === 'chat' ? 'conversation' : state.phone.chatView
+      };
+      persist('已打开该角色的专属记录。');
+      render({ keepPhone: true });
+    },
     deleteCharacter,
     moveCharacter,
     duplicateCharacter,
@@ -1240,7 +1264,8 @@ function bindPanel(root) {
         ? '安装请求已确认。'
         : result.outcome === 'dismissed'
           ? '已取消安装。'
-          : '请先打开独立小手机，再从浏览器菜单选择“安装应用”。';
+          : result.message || getPwaInstallHelp();
+      if (result.outcome === 'unavailable') window.alert(state.ui.statusMessage);
       render();
     },
     exportJson: () => {
@@ -1250,7 +1275,13 @@ function bindPanel(root) {
     },
     importJson: async file => {
       try {
-        state.config = await importConfigFromFile(file);
+        const imported = await importConfigFromFile(file);
+        if (!confirmConfigImport(imported)) {
+          state.ui.statusMessage = '已取消导入，当前小手机没有变化。';
+          render();
+          return;
+        }
+        state.config = imported;
         persist('导入成功，已保存到本地。', {
           forceBackup: true,
           reason: 'before-import'
@@ -1309,6 +1340,79 @@ function createPhoneHandlers() {
     moveCharacter,
     duplicateCharacter,
     checkStartupHealth: refreshStartupHealth,
+    phoneSetupAction: async (action, target) => {
+      if (action === 'backup') {
+        try {
+          await createConfigBackup(state.config);
+          setPath(state.config, 'meta.phoneSetup.completed.backup', true);
+          persist('已创建本地备份。');
+        } catch (error) {
+          state.ui.statusMessage = error.message || '创建备份失败，请稍后重试。';
+        }
+        render({ keepPhone: true });
+        return;
+      }
+      if (target === 'character') {
+        setPath(state.config, 'meta.phoneSetup.completed.character', true);
+        persist('请确认角色资料。');
+      }
+      state.phone.currentApp = target || 'home';
+      if (target === 'character') state.phone.characterView = 'list';
+      render({ keepPhone: true });
+    },
+    dismissPhoneSetup: () => {
+      setPath(state.config, 'meta.phoneSetup.dismissed', true);
+      persist('已收起开始使用提示。');
+      render({ keepPhone: true });
+    },
+    toggleNotificationCenter: () => {
+      state.phone.notificationCenterOpen = !state.phone.notificationCenterOpen;
+      render({ keepPhone: true });
+    },
+    openPhoneNotification: (appId, characterId) => {
+      state.phone.notificationCenterOpen = false;
+      state.phone.currentApp = appId || 'home';
+      if (appId === 'chat') {
+        state.phone.chatCharacterId = characterId || state.config.character.id;
+        state.phone.chatView = 'conversation';
+      }
+      render({ keepPhone: true });
+    },
+    markPhoneSetup: key => {
+      if (!['character', 'ai', 'backup'].includes(key)) return;
+      setPath(state.config, `meta.phoneSetup.completed.${key}`, true);
+      persist('开始使用进度已更新。');
+    },
+    backup: async () => {
+      try {
+        await createConfigBackup(state.config);
+        setPath(state.config, 'meta.phoneSetup.completed.backup', true);
+        persist('本地备份已创建。');
+      } catch (error) {
+        state.ui.statusMessage = error.message || '创建备份失败，请稍后重试。';
+      }
+      render({ keepPhone: true });
+    },
+    restoreBackup: async () => {
+      try {
+        state.config = await restoreLatestConfigBackup();
+        state.ui.statusMessage = '最近的本地备份已恢复。';
+      } catch (error) {
+        state.ui.statusMessage = error.message || '恢复备份失败。';
+      }
+      render({ keepPhone: true });
+    },
+    install: async () => {
+      const result = await installPwa();
+      state.ui.installAvailable = isPwaInstallAvailable();
+      state.ui.statusMessage = result.outcome === 'accepted'
+        ? '安装请求已确认。'
+        : result.outcome === 'dismissed'
+          ? '已取消安装。'
+          : result.message || getPwaInstallHelp();
+      if (result.outcome === 'unavailable') window.alert(state.ui.statusMessage);
+      render({ keepPhone: true });
+    },
     updateWeatherLocation: location => {
       setPath(state.config, 'theme.widgets.weather.city', location.city);
       setPath(state.config, 'theme.widgets.weather.latitude', location.latitude);
@@ -1344,7 +1448,13 @@ function createPhoneHandlers() {
     },
     importJson: async file => {
       try {
-        state.config = await importConfigFromFile(file);
+        const imported = await importConfigFromFile(file);
+        if (!confirmConfigImport(imported)) {
+          state.ui.statusMessage = '已取消导入，当前小手机没有变化。';
+          render({ keepPhone: true });
+          return;
+        }
+        state.config = imported;
         persist('导入成功，已保存到本地。', {
           forceBackup: true,
           reason: 'before-import'

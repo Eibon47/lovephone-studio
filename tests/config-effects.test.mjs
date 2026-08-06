@@ -36,11 +36,21 @@ test('memory type and view switches change the rendered memory app', () => {
   config.apps.memory.userEditable = true;
   config.apps.memory.visibleCards = false;
   config.apps.memory.types = ['preferences'];
+  config.apps.memory.entries = [{
+    id: 'auto-memory',
+    characterId: config.character.id,
+    type: 'preferences',
+    title: '偏好',
+    content: '喜欢安静',
+    date: '2026-08-06',
+    source: 'chat-auto'
+  }];
   const html = MemoryApp.render({ name: '记忆' }, config, {});
 
   assert.match(html, /memory-list is-compact/);
   assert.match(html, /value="preferences"/);
   assert.doesNotMatch(html, /value="relationship"/);
+  assert.match(html, /来自聊天自动记录/);
 });
 
 test('diary mood switch removes mood controls and uses a neutral fallback', () => {
@@ -97,6 +107,15 @@ test('music recommendation and lyric switches remove those surfaces', () => {
   assert.doesNotMatch(discover, /每日推荐/);
   assert.doesNotMatch(discover, /听歌排行/);
   assert.doesNotMatch(player, /data-music-player-tab/);
+});
+
+test('local music library exposes a removable device-only track', () => {
+  const config = configCopy();
+  const html = MusicApp.render({ name: '音乐' }, config, {
+    musicView: 'library',
+    musicLocalTracks: [{ id: 'local-1', source: 'local', name: '本地歌', artist: '我', album: '音乐库', playable: true }]
+  });
+  assert.match(html, /data-music-delete-local="local-1"/);
 });
 
 test('settings section switches hide disabled configuration surfaces', () => {

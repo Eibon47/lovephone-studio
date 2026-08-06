@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lovephone-shell-v33';
+const CACHE_NAME = 'lovephone-shell-v34';
 const APP_SHELL = [
   './',
   './?mode=phone',
@@ -35,6 +35,7 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const requestUrl = new URL(event.request.url);
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -45,6 +46,24 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // App modules are not content-hashed. Prefer the network after a refresh so
+  // a newly deployed build is visible immediately, but retain cache fallback
+  // for installed/offline use.
+  if (requestUrl.pathname.startsWith('/src/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }

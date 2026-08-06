@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { normalizeConfig } from '../src/config/schema.js';
+import { summarizeImportedConfig } from '../src/storage/localConfigStore.js';
 import { CUSTOMIZATION_VERSION } from '../src/services/customizationModel.js';
 
 test('schema upgrades preserve user app choices and content', () => {
@@ -39,4 +40,24 @@ test('schema upgrades preserve user app choices and content', () => {
   assert.equal(migrated.apps.diary.entries[0].title, '旧日记');
   assert.equal(migrated.theme.customization.version, CUSTOMIZATION_VERSION);
   assert.equal(migrated.theme.customization.desktop.columns, 4);
+});
+
+test('import summary reports content before an overwrite is confirmed', () => {
+  const config = normalizeConfig({
+    meta: { title: 'Archive phone' },
+    characters: [{ id: 'character-second', name: 'Second' }],
+    apps: {
+      chat: { messages: [{ id: 'm1' }] },
+      memory: { entries: [{ id: 'memory-1' }] },
+      diary: { entries: [{ id: 'diary-1' }] }
+    }
+  });
+  assert.deepEqual(summarizeImportedConfig(config), {
+    title: 'Archive phone',
+    characters: 2,
+    enabledApps: 4,
+    messages: 1,
+    memories: 1,
+    diaries: 1
+  });
 });

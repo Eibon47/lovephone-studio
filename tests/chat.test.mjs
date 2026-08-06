@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { friendlyAiError } from '../src/services/aiErrors.js';
-import { buildChatRequest, buildChatSystemPrompt } from '../src/apps/ChatApp.js';
+import { buildChatRequest, buildChatSystemPrompt, chatFailureAction } from '../src/apps/ChatApp.js';
 import { activeCharacter } from '../src/apps/appData.js';
 import {
   isDuplicateMemory,
@@ -16,6 +16,12 @@ test('AI errors are translated into actionable Chinese messages', () => {
   assert.match(friendlyAiError(new Error('insufficient_quota')), /余额不足/);
   assert.match(friendlyAiError(new Error('model not found')), /没有找到这个模型/);
   assert.equal(friendlyAiError(new DOMException('cancelled', 'AbortError')), '已停止生成。');
+});
+
+test('chat failures choose an action that helps the user recover', () => {
+  assert.equal(chatFailureAction(new Error('401 invalid api key')), 'settings');
+  assert.equal(chatFailureAction(new Error('model not found')), 'settings');
+  assert.equal(chatFailureAction(new Error('network timeout')), 'retry');
 });
 
 test('legacy character-index messages migrate to stable character IDs', () => {

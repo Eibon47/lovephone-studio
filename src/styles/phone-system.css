@@ -115,6 +115,74 @@
   font-weight: 700;
 }
 
+.phone-notice-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+  border: 0;
+  color: #283b31;
+  background: transparent;
+}
+
+.phone-notice-trigger > i {
+  width: 10px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 6px 6px 4px 4px;
+}
+
+.phone-notice-trigger > b {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 12px;
+  padding: 1px 3px;
+  border-radius: 8px;
+  color: #fff;
+  background: #d06161;
+  font-size: 7px;
+  font-weight: 600;
+}
+
+.phone-notice-center {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid rgba(91, 121, 100, 0.18);
+  border-radius: 13px;
+  background: rgba(255, 253, 245, 0.9);
+  box-shadow: 0 8px 20px rgba(50, 61, 54, 0.12);
+}
+
+.phone-notice-center > header { display: flex; align-items: center; justify-content: space-between; }
+.phone-notice-center header strong { font-size: 12px; }
+.phone-notice-center header button { border: 0; color: #6e7e75; background: transparent; font-size: 17px; }
+.phone-notice-center > p { margin: 2px 0; color: #7c8a81; font-size: 9px; }
+.phone-notice-center > div { display: grid; }
+
+.phone-notice-center > div > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid rgba(91, 121, 100, 0.1);
+  color: #31483b;
+  background: transparent;
+  text-align: left;
+}
+
+.phone-notice-center button > span { display: grid; gap: 2px; min-width: 0; }
+.phone-notice-center button strong, .phone-notice-center button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone-notice-center button strong { font-size: 10px; }
+.phone-notice-center button small { color: #7c8a81; font-size: 8px; }
+.phone-notice-center button > i { color: #94a19a; font-size: 15px; font-style: normal; }
+
 .phone-home {
   overflow-y: auto;
   padding-bottom: 132px;
@@ -123,6 +191,116 @@
 
 .phone-home::-webkit-scrollbar {
   display: none;
+}
+
+.phone-setup-card {
+  display: grid;
+  gap: 9px;
+  margin: 13px 0 0;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, rgba(255, 255, 255, 0.72));
+  border-radius: 14px;
+  background: rgba(255, 253, 245, 0.84);
+  box-shadow: 0 8px 22px rgba(50, 61, 54, 0.1);
+  color: #31483b;
+}
+
+.phone-setup-card > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.phone-setup-card header > span {
+  display: grid;
+  gap: 2px;
+}
+
+.phone-setup-card header small,
+.phone-setup-card > p,
+.phone-setup-card footer {
+  color: #728178;
+  font-size: 9px;
+}
+
+.phone-setup-card header strong {
+  font-size: 14px;
+}
+
+.phone-setup-card header button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  color: #728178;
+  background: rgba(91, 121, 100, 0.1);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.phone-setup-card > p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.phone-setup-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phone-setup-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.phone-setup-item > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(91, 121, 100, 0.25);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 10px;
+}
+
+.phone-setup-item.is-done > span {
+  border-color: #4ca977;
+  background: #4ca977;
+}
+
+.phone-setup-item > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.phone-setup-item strong { font-size: 10px; }
+.phone-setup-item small { color: #7c8a81; font-size: 8px; }
+.phone-setup-item > b { color: #4ca977; font-size: 8px; font-weight: 500; }
+
+.phone-setup-item button {
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, #c9d2cc);
+  border-radius: 7px;
+  padding: 4px 7px;
+  color: #40594b;
+  background: color-mix(in srgb, var(--accent) 11%, #fff);
+  font-size: 8px;
+}
+
+.phone-setup-card footer {
+  text-align: right;
 }
 
 .status-icons {
@@ -1152,6 +1330,50 @@
   grid-template-columns: 1fr;
 }
 
+.character-relationship-overview {
+  margin: 0 12px 9px;
+  padding: 9px;
+  border: 1px solid rgba(92, 122, 102, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.character-relationship-overview header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.character-relationship-overview header strong { font-size: 10px; }
+.character-relationship-overview header small,
+.character-relationship-overview p { margin: 0; color: #7a897f; font-size: 8px; }
+
+.character-relationship-overview > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.character-relationship-overview button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 3px;
+  align-items: center;
+  min-height: 38px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: rgba(241, 247, 238, 0.88);
+  text-align: left;
+  font: inherit;
+}
+
+.character-relationship-overview button span { font-size: 8px; color: #74837a; }
+.character-relationship-overview button strong { grid-column: 1; font-size: 10px; }
+.character-relationship-overview button i { grid-column: 2; grid-row: 1 / span 2; font-size: 15px; font-style: normal; color: #9eb6a4; }
+
 .character-management-actions {
   display: grid;
   grid-template-columns: 1fr 1fr 1.3fr;
@@ -1336,6 +1558,18 @@
   background: color-mix(in srgb, var(--accent) 14%, rgba(255, 253, 243, 0.84));
   font-size: 11px;
   line-height: 1.2;
+}
+
+.character-status-phone .character-presence {
+  color: #356d50;
+  background: rgba(99, 181, 126, 0.16);
+}
+
+.character-presence i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ca977;
 }
 
 .character-tools-phone span {
@@ -1686,6 +1920,15 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 10px 12px;
+}
+
+.settings-phone-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-phone-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .settings-data-actions button,
@@ -2647,6 +2890,35 @@
   font-size: 12px;
 }
 
+.music-online-note {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(111, 93, 82, .14);
+  background: rgba(255, 255, 255, .48);
+  color: #74685f;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.music-qr-panel {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 10px 0 2px;
+}
+
+.music-qr-panel img {
+  width: 148px;
+  height: 148px;
+  border: 1px solid rgba(50, 65, 56, .12);
+  background: #fff;
+}
+
+.music-qr-panel small {
+  color: #6f716c;
+  font-size: 10px;
+}
+
 .music-scroll-area {
   display: grid;
   gap: 14px;
@@ -2659,6 +2931,28 @@
 .music-scroll-area::-webkit-scrollbar {
   display: none;
 }
+
+.music-local-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.music-local-track .music-track-row { border-bottom: 0; }
+
+.music-local-track > button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  color: #8d8d8d;
+  background: transparent;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.music-local-track > button:hover { color: #d5534f; background: #f8e9e8; }
 
 .music-feature-card {
   display: grid;
@@ -4915,6 +5209,29 @@
   background: rgba(255, 238, 235, 0.88);
   font-size: 9px;
   line-height: 1.4;
+}
+
+.chat-ai-status p {
+  margin: 0;
+}
+
+.memory-source-label {
+  display: block;
+  margin-top: 5px;
+  color: #87958b;
+  font-size: 8px;
+}
+
+.chat-ai-status button {
+  margin: 6px 5px 0 0;
+  min-height: 25px;
+  padding: 3px 8px;
+  border: 1px solid rgba(154, 87, 87, 0.28);
+  border-radius: 6px;
+  color: #874747;
+  background: rgba(255, 255, 255, 0.62);
+  font: inherit;
+  font-size: 9px;
 }
 
 .chat-message-row.is-streaming .message p {

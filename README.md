@@ -2,7 +2,7 @@
 
 面向个人 DIY 的 AI 陪伴小手机搭建器。
 
-> 这是一个本地优先的开源开发版。它目前主要支持 Windows；公开下载安装包前，音乐内容授权、MPV 许可证义务和 Windows 代码签名仍需完成。
+> 这是一个本地优先的开源开发版。它目前主要支持 Windows；公开下载安装包前，仍需完成在线音乐的内容授权核验和 Windows 代码签名。
 
 ## 开源与边界
 
@@ -34,10 +34,10 @@ npm ci
 npm run web
 ```
 
-终端二启动音乐和 AI 桥接服务：
+终端二启动 AI 桥接服务：
 
 ```powershell
-node server/start-services.mjs
+node server/ai-bridge.mjs
 ```
 
 然后打开：
@@ -46,25 +46,16 @@ node server/start-services.mjs
 http://127.0.0.1:5177/
 ```
 
-如需改端口或本机 MPV 位置，可在启动前设置 PowerShell 环境变量。例如：
+如需改 AI 服务端口，可在启动前设置 PowerShell 环境变量。例如：
 
 ```powershell
 $env:LOVEPHONE_AI_PORT = "5189"
-$env:MPV_DIRECTORY = "C:\Program Files\MPV Player"
 npm run services
 ```
 
 不要把 API Key 写入仓库、截图或公开讨论中。
 
-音乐桥接默认使用 `5188` 端口，AI 桥接默认使用 `5189` 端口。也可以分别运行 `node server/music-bridge.mjs` 和 `node server/ai-bridge.mjs`。音乐属于本地实验能力，仅在源码开发模式启用。
-
-首次使用网易云音乐时，可以在小手机“设置 → 音乐服务”点击“打开登录窗口”，使用网易云音乐 App 扫码。开发环境也可以在终端运行：
-
-```powershell
-ncm-cli login
-```
-
-登录状态保存在网易云 CLI 自己的本机目录中，不会进入小手机配置。设置 App 的“测试音乐连接”可以分别检查桥接服务和网易云登录状态。
+AI 桥接默认使用 `5189` 端口。旧的 MPV / CLI 音乐桥接仅保留为仓库中的历史实验文件，网页、小手机和公开安装包都不再依赖它。
 
 搭建完成后，可在“完成”页打开独立小手机，也可以直接访问：
 
@@ -73,6 +64,17 @@ http://127.0.0.1:5177/?mode=phone
 ```
 
 Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
+
+## 部署到 Netlify
+
+完整的逐步说明见 [docs/NETLIFY_DEPLOY.md](docs/NETLIFY_DEPLOY.md)，推送前请先完成 [docs/GITHUB_RELEASE_CHECKLIST.md](docs/GITHUB_RELEASE_CHECKLIST.md)。
+
+本仓库已包含 `netlify.toml`。在 Netlify 中从 GitHub 导入仓库即可；它会执行 `npm run web:build`，只发布 `dist` 中的网页文件，并同时部署 `netlify/functions/ai.mjs`。
+
+- Netlify 网站运行 AI 网关，不需要启动本机 `5189` 服务。
+- 用户在“设置 → AI 模型连接”填写的 API Key 仅保存在当前浏览器会话；它不会写入 GitHub、Netlify 环境变量、配置导出或 IndexedDB。关闭浏览器后需要重新填写。
+- 音乐 App 仍然由浏览器直接调用用户填写的 HTTPS 兼容 API；网易云扫码 Cookie 仅保存在当前浏览器的音乐数据库中。
+- 本机 `npm run web` 与 Windows 桌面版仍会自动使用 `127.0.0.1:5189` 的本机桥接和 Windows DPAPI 密钥保存。
 
 ## 接入真实 AI
 
@@ -102,7 +104,8 @@ API Key 由本机 AI 桥接服务使用 Windows DPAPI 按当前 Windows 用户�
 - 自定义手机壳、语义配色、圆角、阴影、桌面网格、Dock 和每个 App 的界面变量
 - 声明式自定义小组件，可读取时间、天气、角色、音乐、纪念日、日记、记忆和心情
 - 离线 ZIP 主题包导入导出、导入预检、文件哈希和独立素材库
-- 网易云音乐搜索、推荐、榜单、歌单、歌词和本机播放
+- 本地音乐上传、IndexedDB 保存和浏览器原生播放
+- 可选的兼容在线音乐 API：搜索、推荐、榜单、歌单、歌词和浏览器播放
 - 小组件联动音乐、相框上传、天气、时钟等
 - 配置自动保存与 JSON 导入导出
 - IndexedDB 本地数据库、最多 10 份自动备份、手动备份与恢复
@@ -130,7 +133,7 @@ npm install
 npm run desktop
 ```
 
-`npm run desktop`（或 `npm run desktop:experimental`）是本地开发模式，会保留实验音乐能力；使用前请自行准备 MPV，并确认网易云登录和使用权限。
+`npm run desktop` 是本地开发模式。音乐 App 使用浏览器原生播放，不要求安装 MPV 或网易云 CLI。
 
 生成可公开测试的 Windows 安装包：
 
@@ -138,19 +141,19 @@ npm run desktop
 npm run desktop:build
 ```
 
-目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。正式安装包会自动启动网页和 AI 桥接，不要求用户另装 Node；它不包含 MPV、网易云 CLI 或音乐桥接，音乐 App 和唱片组件会自动隐藏。
+目录测试版输出到 `release/win-unpacked`，安装包输出到 `release`。正式安装包会自动启动网页和 AI 桥接，不要求用户另装 Node。音乐 App 和唱片组件会保留：本地音乐可直接使用；在线音乐需要用户自行配置可信的兼容 API。
 
-正式安装包已启用 ASAR 封装，减少应用代码被直接修改的风险；这不是加密，也不能替代数字签名。当前 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。本地实验音乐仍受 MPV 许可证和网易云音乐内容授权限制，不随公开安装包分发。
+正式安装包已启用 ASAR 封装，减少应用代码被直接修改的风险；这不是加密，也不能替代数字签名。当前 Windows 安装包代码签名仍是公开发布前的阻断项，具体说明见 `THIRD_PARTY_NOTICES.md` 和 `docs/RELEASE_AUDIT.md`。在线音乐由用户自行配置服务，使用前应自行确认接口与内容授权。
 
 ## 常见问题
 
 ### 页面能打开，但 AI 无法连接
 
-确认第二个终端正在运行 `node server/start-services.mjs`，再在小手机“设置 → AI 模型连接”中点击“连接并测试”。API Key 仅交给本机 AI 桥接服务，不会进入导出的主题或配置文件。
+确认第二个终端正在运行 `node server/ai-bridge.mjs`，再在小手机“设置 → AI 模型连接”中点击“连接并测试”。API Key 仅交给本机 AI 桥接服务，不会进入导出的主题或配置文件。
 
 ### 音乐 App 没有内容或不能播放
 
-音乐依赖本机音乐桥接服务、网易云登录状态和 MPV。先确认“设置 → 音乐服务”的连接检测通过。该功能仍是实验性本地功能，不适合作为公开安装包的承诺能力。
+本地音乐请先在音乐 App 右上角导入音频。在线音乐请在“设置 → 音乐服务”开启在线音乐，填写一个支持 HTTPS 和跨域请求的 NeteaseCloudMusicApi 兼容地址，再点击“测试音乐连接”。扫码登录会把凭证发送给该 API 服务，请只使用自己部署或明确可信的服务。
 
 ### 换浏览器或换电脑后内容不见了
 

@@ -1,13 +1,19 @@
 import { shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-62';
 import {
+  loadLocalTracks,
+  loadOnlineHome,
   musicBaseUrl,
-  musicFetchJson as fetchJson,
-  musicPostJson as postJson
-} from '../services/musicService.js?v=app-config-49';
+  playMusicTrack,
+  playNext,
+  playPrevious,
+  resolveOnlineStream,
+  setMusicQueue,
+  setMusicStateListener,
+  toggleMusicPlayback
+} from '../services/musicService.js?v=app-config-91';
 import { readOptimizedImage } from '../services/imageUploadService.js?v=app-config-60';
 
 let homePlaybackState = null;
-let homePollTimer = null;
 let clockTimer = null;
 let codeWidgetMessageHandler = null;
 
@@ -19,24 +25,9 @@ function mediaUrl(value) {
   return String(value || '').split('?')[0].replace(/^http:\/\//i, 'https://');
 }
 
-function normalizeTrack(song = {}) {
-  const artists = song.fullArtists || song.artists || [];
-  const album = song.album || {};
-  return {
-    id: String(song.id || ''),
-    encryptedId: String(song.id || ''),
-    originalId: String(song.originalId || ''),
-    name: song.name || '未命名歌曲',
-    artist: artists.map(item => typeof item === 'string' ? item : item.name).filter(Boolean).join(' / ') || '未知歌手',
-    album: album.name || song.albumName || '未知专辑',
-    cover: mediaUrl(song.coverImgUrl || album.picUrl),
-    duration: Number(song.duration) || 0,
-    playable: song.visible !== false && song.playFlag !== false
-  };
-}
-
 function knownTracks(osState) {
   return [
+    ...(osState.musicLocalTracks || []),
     ...(osState.musicHome?.daily || []),
     ...(osState.musicHome?.ranking || []),
     ...(osState.musicPlaylistTracks || []),
@@ -44,7 +35,7 @@ function knownTracks(osState) {
     ...(osState.musicTrack ? [osState.musicTrack] : [])
   ].filter((track, index, all) => (
     track?.playable !== false
-    && all.findIndex(item => item.encryptedId === track.encryptedId) === index
+    && all.findIndex(item => item.id === track.id) === index
   ));
 }
 
@@ -52,18 +43,16 @@ function findTrackFromTitle(title, osState) {
   return knownTracks(osState).find(track => String(title || '').startsWith(track.name));
 }
 
-async function playTrack(base, track) {
-  return postJson(base, '/play', {
-    encryptedId: track.encryptedId,
-    originalId: track.originalId
-  });
-}
-
-async function chooseFirstTrack(base, osState) {
+async function chooseFirstTrack(config, osState) {
   const known = knownTracks(osState).find(track => track.playable);
-  if (known) return { track: known, daily: osState.musicHome?.daily || [] };
-  const discover = await fetchJson(`${base}/discover`);
-  const daily = (discover.daily || []).map(normalizeTrack);
+  if (known) return { track: known, daily: osState.musicHome?.daily || [], local: osState.musicLocalTracks || [] };
+  const local = await loadLocalTracks().catch(() => []);
+  const localTrack = local.find(track => track.playable);
+  if (localTrack) return { track: localTrack, daily: [], local };
+  const base = musicBase(config);
+  if (!config.apps?.music?.onlineEnabled || !base) return { track: null, daily: [], local };
+  const discover = await loadOnlineHome(base);
+  const daily = discover.daily || [];
   return { track: daily.find(track => track.playable), daily };
 }
 
@@ -91,13 +80,16 @@ function updateVinylDom(container, state, track) {
 }
 
 async function controlVinyl(action, container, config, osState, handlers) {
-  const base = musicBase(config);
   let track = osState.musicTrack;
   if (!track) {
-    const selection = await chooseFirstTrack(base, osState);
+    const selection = await chooseFirstTrack(config, osState);
     track = selection.track;
     if (!track) throw new Error('暂时没有可播放歌曲');
-    const result = await playTrack(base, track);
+    const pool = [...(selection.local || []), ...(selection.daily || [])];
+    setMusicQueue(pool, track);
+    const result = await playMusicTrack(track, {
+      sourceUrl: track.source === 'netease' ? await resolveOnlineStream(musicBase(config), track.encryptedId) : ''
+    });
     homePlaybackState = result.state;
     handlers.updatePhoneState?.({
       musicTrack: track,
@@ -108,6 +100,7 @@ async function controlVinyl(action, container, config, osState, handlers) {
         ...(osState.musicHome || {}),
         daily: selection.daily
       },
+      musicLocalTracks: selection.local || osState.musicLocalTracks || [],
       musicStatus: ''
     });
     handlers.openApp?.('music');
@@ -115,8 +108,7 @@ async function controlVinyl(action, container, config, osState, handlers) {
   }
 
   if (action === 'toggle') {
-    const playing = (homePlaybackState?.status || osState.musicPlayback?.status) === 'playing';
-    const result = await postJson(base, '/control', { action: playing ? 'pause' : 'resume' });
+    const result = await toggleMusicPlayback();
     updateVinylDom(container, result.state, track);
     handlers.updatePhoneState?.({
       musicPlayback: result.state,
@@ -125,17 +117,9 @@ async function controlVinyl(action, container, config, osState, handlers) {
     return;
   }
 
-  const beforeTitle = homePlaybackState?.title || osState.musicPlayback?.title;
-  let result = await postJson(base, '/control', { action });
-  let nextTrack = findTrackFromTitle(result.state?.title, osState);
-  const pool = knownTracks(osState);
-  if ((!nextTrack || result.state?.title === beforeTitle) && pool.length > 1) {
-    const currentIndex = Math.max(0, pool.findIndex(item => item.encryptedId === track.encryptedId));
-    const direction = action === 'prev' ? -1 : 1;
-    nextTrack = pool[(currentIndex + direction + pool.length) % pool.length];
-    result = await playTrack(base, nextTrack);
-  }
-  track = nextTrack || track;
+  const resolver = item => resolveOnlineStream(musicBase(config), item.encryptedId);
+  const result = action === 'prev' ? await playPrevious(resolver) : await playNext(1, resolver);
+  track = result.track || track;
   updateVinylDom(container, result.state, track);
   handlers.updatePhoneState?.({
     musicTrack: track,
@@ -228,26 +212,18 @@ function bindClock(container) {
   clockTimer = setInterval(update, 30000);
 }
 
-function bindVinylPolling(container, config, osState) {
-  clearInterval(homePollTimer);
+function bindVinylPlayer(container, config, osState, handlers) {
   homePlaybackState = osState.musicPlayback || null;
   if (!config.theme?.widgets?.vinyl?.enabled) return;
-  const base = musicBase(config);
-  const poll = async () => {
-    if (!container.isConnected) {
-      clearInterval(homePollTimer);
-      homePollTimer = null;
-      return;
-    }
-    try {
-      const result = await fetchJson(`${base}/state`);
-      updateVinylDom(container, result.state, findTrackFromTitle(result.state?.title, osState) || osState.musicTrack);
-    } catch {
-      // Keep the last visible state if the local music bridge is restarting.
-    }
-  };
-  poll();
-  homePollTimer = setInterval(poll, 1000);
+  setMusicStateListener(result => {
+    if (!container.isConnected || !result?.track) return;
+    updateVinylDom(container, result.state, result.track);
+    handlers.updatePhoneState?.({
+      musicTrack: result.track,
+      musicPlayback: result.state,
+      musicPlaying: result.state?.status === 'playing'
+    });
+  });
 }
 
 export function bindHomeWidgetActions(container, config, osState, handlers = {}) {
@@ -327,6 +303,6 @@ export function bindHomeWidgetActions(container, config, osState, handlers = {})
   });
 
   bindClock(container);
-  bindVinylPolling(container, config, osState);
+  bindVinylPlayer(container, config, osState, handlers);
   bindCodeWidgetBridge(container, config, osState, handlers);
 }

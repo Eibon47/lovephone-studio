@@ -1,4 +1,4 @@
-import { getEnabledApps } from './appRegistry.js?v=app-config-61';
+import { getEnabledApps } from './appRegistry.js?v=app-config-93';
 import { escapeHtml } from './html.js';
 import { getAppIcon } from './appAppearance.js?v=app-config-71';
 import { safeUploadedImage } from './icons.js?v=app-config-61';
@@ -13,6 +13,9 @@ import {
   primaryAnniversary
 } from '../services/anniversaryService.js?v=app-config-44';
 import { renderCustomWidgets } from './customWidgetRuntime.js?v=app-config-70';
+import { phoneSetupProgress, shouldShowPhoneSetup } from '../services/phoneSetupService.js?v=app-config-1';
+import { collectPhoneNotifications } from '../services/phoneNotificationService.js?v=app-config-1';
+import { characterPresence } from '../services/characterPresenceService.js?v=app-config-1';
 
 const defaultLayouts = {
   clock: { x: 0, y: 0, w: 4, h: 2 },
@@ -149,12 +152,12 @@ function renderWeatherWidget(widget) {
   `);
 }
 
-function renderCalendarWidget(widget) {
+function renderCalendarWidget(widget, config) {
   const now = new Date();
   const day = now.getDate();
   const week = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
   return gridItem('calendar', widget, `
-    <article class="desktop-widget desktop-widget-calendar">
+    <article class="desktop-widget desktop-widget-calendar" data-widget-open-app="${config.apps?.diary?.enabled ? 'diary' : 'character'}">
       <header><span>${escapeHtml(widget.title || `${now.getMonth() + 1}月`)}</span><small>星期${week}</small></header>
       <strong>${day}</strong>
       <div class="calendar-dots"><i></i><i></i><i></i><i></i><i></i></div>
@@ -182,12 +185,14 @@ function renderAnniversaryWidget(widget, config) {
 }
 
 function renderCharacterStatusWidget(widget, config, osState) {
-  const characterName = activeCharacter(config, osState)?.name || '小满';
+  const character = activeCharacter(config, osState);
+  const characterName = character?.name || '小满';
+  const presence = characterPresence(config, character, osState);
   const initial = [...characterName][0] || '伴';
   return gridItem('characterStatus', widget, `
     <article class="desktop-widget desktop-widget-character" data-widget-open-app="character">
       <span class="character-widget-avatar">${escapeHtml(initial)}<i></i></span>
-      <div><small>${escapeHtml(characterName)} · 在线</small><strong>${escapeHtml(widget.status || '正在想你')}</strong></div>
+      <div><small>${escapeHtml(characterName)} · ${escapeHtml(presence.label)}</small><strong>${escapeHtml(widget.status || presence.detail || '正在陪伴')}</strong></div>
       <span class="character-widget-wave"><i></i><i></i><i></i><i></i><i></i></span>
     </article>
   `);
@@ -203,7 +208,8 @@ function renderDailyNoteWidget(widget, config, osState) {
   });
   const latestGreeting = (config.apps?.goodnight?.greetings || [])
     .find(item => item.characterId === greetingCharacterId);
-  const latest = config.apps?.goodnight?.entries?.[0];
+  const latest = (config.apps?.goodnight?.entries || [])
+    .find(item => (item.characterId || config.character.id) === character.id);
   const greeting = currentGreeting || latestGreeting;
   const text = config.apps?.goodnight?.desktopNote
     ? greeting?.message || latest?.message || latest?.note || widget.text || '今天也会好好陪着你。'
@@ -221,7 +227,9 @@ function renderDailyNoteWidget(widget, config, osState) {
 }
 
 function renderMoodWidget(widget, config) {
+  const character = activeCharacter(config);
   const savedScores = (config.apps?.diary?.entries || [])
+    .filter(entry => (entry.characterId || config.character.id) === character.id)
     .slice(0, 7)
     .map(entry => Math.max(10, Math.min(100, Number(entry.moodScore) || 50)))
     .reverse();
@@ -229,7 +237,7 @@ function renderMoodWidget(widget, config) {
   const latestScore = savedScores.at(-1);
   const label = latestScore >= 75 ? '很好' : latestScore >= 50 ? '平静' : latestScore ? '需要关心' : '待记录';
   return gridItem('mood', widget, `
-    <article class="desktop-widget desktop-widget-mood" data-widget-open-app="diary">
+    <article class="desktop-widget desktop-widget-mood" data-widget-open-app="${config.apps?.diary?.enabled ? 'diary' : 'character'}">
       <header><span>${escapeHtml(widget.title || '这周心情')}</span><b>${label}</b></header>
       <div class="mood-bars">${bars.map((value, index) => `<i style="--mood:${value}%"${index === 5 ? ' class="active"' : ''}></i>`).join('')}</div>
       <small>一 二 三 四 五 六 日</small>
@@ -266,10 +274,8 @@ const widgetRenderers = {
 
 function renderWidgetItems(config, osState) {
   const widgets = config.theme?.widgets || {};
-  const experimentalMusic = osState.runtimeCapabilities?.experimentalMusic !== false;
   return WIDGET_IDS
     .map(id => {
-      if (id === 'vinyl' && !experimentalMusic) return '';
       const enabled = widgets[id]?.enabled
         || (id === 'dailyNote' && config.apps?.goodnight?.enabled && config.apps.goodnight.desktopNote);
       const appEnabled = enabled
@@ -296,13 +302,61 @@ function renderDesktopGrid(config, apps, currentApp, osState) {
   `;
 }
 
+function renderPhoneSetup(config, osState) {
+  if (!shouldShowPhoneSetup(config, osState)) return '';
+  const progress = phoneSetupProgress(config, osState);
+  const item = (id, title, description, action, target) => `
+    <li class="phone-setup-item ${progress.completed[id] ? 'is-done' : ''}">
+      <span aria-hidden="true">${progress.completed[id] ? '✓' : ''}</span>
+      <div><strong>${title}</strong><small>${description}</small></div>
+      ${progress.completed[id]
+        ? '<b>已完成</b>'
+        : `<button type="button" data-phone-setup-action="${action}" data-phone-setup-target="${target}">去完成</button>`}
+    </li>
+  `;
+
+  return `
+    <section class="phone-setup-card" aria-label="开始使用小手机">
+      <header>
+        <span><small>开始使用</small><strong>把这台小手机准备好</strong></span>
+        <button type="button" data-phone-setup-dismiss aria-label="暂时收起开始使用">×</button>
+      </header>
+      <p>完成这三件事后，就可以放心把它当作自己的小手机来使用。</p>
+      <ol>
+        ${item('character', '确认角色', '名字、称呼和角色设定', 'open', 'character')}
+        ${item('ai', '连接 AI', '填写自己的服务商、Key 和模型', 'open', 'settings')}
+        ${item('backup', '创建备份', '为聊天和陪伴数据留一份副本', 'backup', 'settings')}
+      </ol>
+      <footer>${progress.completedCount}/3 已完成</footer>
+    </section>
+  `;
+}
+
+function renderNotificationCenter(config, osState) {
+  const notices = collectPhoneNotifications(config);
+  if (!osState.notificationCenterOpen) return '';
+  return `
+    <section class="phone-notice-center" aria-label="今日消息">
+      <header><strong>今日消息</strong><button type="button" data-phone-notice-toggle aria-label="收起通知">×</button></header>
+      ${notices.length ? `<div>${notices.map(item => `
+        <button type="button" data-phone-notice-open="${item.appId}" data-phone-notice-character="${escapeHtml(item.characterId || '')}">
+          <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)}</small></span><i>›</i>
+        </button>
+      `).join('')}</div>` : '<p>今天还没有新的陪伴消息。</p>'}
+    </section>
+  `;
+}
+
 export function renderHomeScreen(config, osState) {
   const apps = getEnabledApps(config, osState.runtimeCapabilities);
   const dockApps = apps.filter(app => app.dock).slice(0, 4);
+  const notificationCount = collectPhoneNotifications(config).length;
 
   return `
     <section class="phone-screen phone-home">
-      ${renderStatusBar()}
+      ${renderStatusBar('', { showNotifications: true, notificationCount })}
+      ${renderNotificationCenter(config, osState)}
+      ${renderPhoneSetup(config, osState)}
       ${renderDesktopGrid(config, apps, osState.currentApp, osState)}
       <div class="phone-dock">
         ${dockApps.map(app => appIconHtml(app, osState.currentApp, config)).join('')}

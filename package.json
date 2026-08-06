@@ -5,11 +5,16 @@
   "author": "LovePhone Studio",
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "main": "desktop/main.mjs",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "web:build": "node server/build-web.mjs",
     "web": "node server/static-server.mjs",
+    "web:lan": "node server/start-lan-preview.mjs",
     "services": "node server/start-services.mjs",
     "prepare:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mpv.ps1",
     "desktop": "electron .",

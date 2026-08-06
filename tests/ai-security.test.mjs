@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   clearAiSession,
+  configureAiProvider,
   getAiBridgeHealth
 } from '../src/services/aiService.js';
 
@@ -72,5 +73,36 @@ test('expired local AI sessions pair again and retry once', async () => {
     assert.equal(healthCount, 2);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('deployed AI gateway keeps the user key in the browser session and sends it only to the gateway', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  const originalSessionStorage = globalThis.sessionStorage;
+  const calls = [];
+  const storage = new Map();
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname: 'lovephone.netlify.app', href: 'https://lovephone.netlify.app/' } });
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    configurable: true,
+    value: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) }
+  });
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), body: JSON.parse(options.body || '{}') });
+    return new Response(JSON.stringify({ ok: true, answer: '连接成功' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const deployed = { aiProviders: { bridgeUrl: '' } };
+
+  try {
+    await configureAiProvider(deployed, {
+      profileId: 'role-web', providerId: 'deepseek', apiKey: 'secret-key', model: 'deepseek-chat', baseUrl: ''
+    });
+    assert.equal(calls[0].url, '/.netlify/functions/ai');
+    assert.equal(calls[0].body.apiKey, 'secret-key');
+    assert.match(storage.get('lovephone-ai-session-profiles-v1'), /secret-key/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: originalLocation });
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: originalSessionStorage });
   }
 });

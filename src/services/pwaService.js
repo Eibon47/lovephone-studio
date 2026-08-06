@@ -16,6 +16,14 @@ export function isPwaInstallAvailable() {
   return Boolean(deferredInstallPrompt);
 }
 
+export function getPwaInstallHelp(userAgent = globalThis.navigator?.userAgent || '') {
+  const agent = String(userAgent).toLowerCase();
+  if (/iphone|ipad|ipod/.test(agent)) {
+    return '当前浏览器不能直接弹出安装窗口。请在 Safari 点“分享”，再选“添加到主屏幕”。';
+  }
+  return '当前窗口不能直接安装。请用 Chrome 或 Edge 打开小手机网址，再从浏览器菜单选择“安装应用”或“安装此网站为应用”。';
+}
+
 export function setupPwa({ onInstallAvailabilityChange } = {}) {
   if ('serviceWorker' in navigator && ['http:', 'https:'].includes(location.protocol)) {
     navigator.serviceWorker.register('./sw.js').catch(error => {
@@ -37,7 +45,7 @@ export function setupPwa({ onInstallAvailabilityChange } = {}) {
 
 export async function installPwa() {
   if (!deferredInstallPrompt) {
-    return { outcome: 'unavailable' };
+    return { outcome: 'unavailable', message: getPwaInstallHelp() };
   }
 
   const prompt = deferredInstallPrompt;

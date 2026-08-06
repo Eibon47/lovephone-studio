@@ -3,7 +3,6 @@ import { stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -25,7 +24,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' http://127.0.0.1:5188 http://127.0.0.1:5189 https://api.open-meteo.com https://geocoding-api.open-meteo.com",
+  "connect-src 'self' https: http://127.0.0.1:5188 http://127.0.0.1:5189",
   "media-src 'self' blob: https:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -93,10 +92,16 @@ export function startStaticServer(options = {}) {
     try {
       const info = await stat(filePath);
       if (!info.isFile()) return sendJson(response, 404, { error: '文件不存在' });
+      const relativePath = path.relative(root, filePath).replace(/\\/g, '/');
+      const shouldRevalidate = relativePath === 'index.html'
+        || relativePath === 'sw.js'
+        || relativePath.startsWith('src/');
       response.writeHead(200, {
         'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
         'Content-Length': info.size,
-        'Cache-Control': filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=3600'
+        // Source modules are intentionally not fingerprinted. Revalidate them
+        // so a local refresh never keeps an earlier phone UI after an update.
+        'Cache-Control': shouldRevalidate ? 'no-cache' : 'public, max-age=3600'
       });
       if (request.method === 'HEAD') return response.end();
       createReadStream(filePath).pipe(response);
@@ -115,7 +120,7 @@ export function startStaticServer(options = {}) {
   });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1]?.endsWith('static-server.mjs')) {
   await startStaticServer({
     root: process.env.LOVEPHONE_APP_ROOT || process.cwd()
   });

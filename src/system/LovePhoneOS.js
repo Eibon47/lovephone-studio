@@ -1,7 +1,7 @@
-import { renderAppRouter, bindAppRouter } from './AppRouter.js?v=app-config-83';
+import { renderAppRouter, bindAppRouter } from './AppRouter.js?v=app-config-96';
 import { bindGridStackWidgets, shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-62';
-import { renderHomeScreen } from './HomeScreen.js?v=app-config-71';
-import { bindHomeWidgetActions } from './HomeWidgetActions.js?v=app-config-70';
+import { renderHomeScreen } from './HomeScreen.js?v=app-config-95';
+import { bindHomeWidgetActions } from './HomeWidgetActions.js?v=app-config-92';
 import { escapeHtml } from './html.js';
 import { getAppTheme } from './appAppearance.js?v=app-config-71';
 import { bindLiveWeather } from '../services/weatherService.js?v=app-config-21';
@@ -94,6 +94,24 @@ export function renderLovePhoneOS(container, config, osState, handlers = {}) {
   if (currentApp !== 'home') {
     bindAppRouter(container, config, osState, handlers);
   } else {
+    container.querySelectorAll('[data-phone-notice-toggle]').forEach(button => {
+      button.addEventListener('click', () => {
+        handlers.toggleNotificationCenter?.();
+      });
+    });
+    container.querySelectorAll('[data-phone-notice-open]').forEach(button => {
+      button.addEventListener('click', () => {
+        handlers.openPhoneNotification?.(button.dataset.phoneNoticeOpen, button.dataset.phoneNoticeCharacter);
+      });
+    });
+    container.querySelectorAll('[data-phone-setup-action]').forEach(button => {
+      button.addEventListener('click', () => {
+        handlers.phoneSetupAction?.(button.dataset.phoneSetupAction, button.dataset.phoneSetupTarget);
+      });
+    });
+    container.querySelector('[data-phone-setup-dismiss]')?.addEventListener('click', () => {
+      handlers.dismissPhoneSetup?.();
+    });
     bindGridStackWidgets(container, config, handlers);
     bindLiveWeather(container, config);
     bindHomeWidgetActions(container, config, osState, handlers);

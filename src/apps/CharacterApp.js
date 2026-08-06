@@ -3,6 +3,7 @@ import { getCharacterAvatar } from '../system/icons.js?v=app-config-61';
 import { renderStatusBar } from '../system/StatusBar.js';
 import { getAppTheme } from '../system/appAppearance.js?v=app-config-17';
 import { getAiProvider, selectedAiProviders } from '../config/aiProviderCatalog.js?v=app-config-35';
+import { characterPresence } from '../services/characterPresenceService.js?v=app-config-1';
 
 const statusLabels = {
   mood: '心情稳定',
@@ -63,15 +64,17 @@ function selectedIndex(osState, config) {
   return Math.max(0, Math.min(Number(osState.selectedCharacterIndex || 0), maxIndex));
 }
 
-function renderCharacterStatus(appConfig) {
+function renderCharacterStatus(appConfig, config, osState, character) {
   const statusBar = appConfig.statusBar || {};
   if (!statusBar.enabled) return '';
   const items = (statusBar.items || []).slice(0, 4);
   if (!items.length) return '';
 
+  const presence = characterPresence(config, character, osState);
   return `
     <div class="character-status-phone">
-      ${items.map(item => `<span>${escapeHtml(statusLabels[item] || item)}</span>`).join('')}
+      <span class="character-presence"><i></i>${escapeHtml(presence.label)}</span>
+      ${items.slice(0, 3).map(item => `<span>${escapeHtml(statusLabels[item] || item)}</span>`).join('')}
     </div>
   `;
 }
@@ -100,7 +103,7 @@ function renderTags(tags = []) {
   return tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('');
 }
 
-function renderCharacterList(app, config, appConfig) {
+function renderCharacterList(app, config, appConfig, osState = {}) {
   const characters = allCharacters(config);
   const activeCharacterId = config.apps?.character?.activeCharacterId || config.character.id;
   const canAdd = characters.length < (appConfig.maxCharacters || 3);
@@ -146,7 +149,7 @@ function renderCharacterList(app, config, appConfig) {
         <h3>${escapeHtml(titleMap[theme] || app.name)}</h3>
         <button class="app-top-icon" type="button" data-character-add ${canAdd ? '' : 'disabled'} aria-label="新增角色">+</button>
       </header>
-      ${renderCharacterStatus(appConfig)}
+      ${renderCharacterStatus(appConfig, config, osState, config.character)}
       ${themePrelude}
       <div class="character-list-phone">
         ${characters.map((character, index) => `
@@ -154,7 +157,7 @@ function renderCharacterList(app, config, appConfig) {
             <img src="${getCharacterAvatar(character)}" alt="" />
             <span>
               <strong>${escapeHtml(character.name || `角色 ${index + 1}`)}</strong>
-              <small>${escapeHtml(character.relationship || '陪伴角色')} · ${escapeHtml((character.personality || []).slice(0, 2).join('、') || '待补充设定')}</small>
+              <small>${escapeHtml(characterPresence(config, character, osState).label)} · ${escapeHtml(character.relationship || '陪伴角色')}</small>
             </span>
             <em>${character.id === activeCharacterId ? '当前' : '›'}</em>
           </button>
@@ -210,7 +213,7 @@ function renderDeleteControls(character, characterCount, osState) {
   if (osState.characterDeleteConfirmId === character.id) {
     return `
       <div class="character-delete-confirm">
-        <p>删除后，这个角色的聊天和记忆也会一起清除。</p>
+        <p>删除后，这个角色的聊天、未发送草稿、记忆、日记和问候记录都会一起清除。</p>
         <button type="button" data-character-delete-cancel>取消</button>
         <button type="button" data-character-delete-confirm="${escapeHtml(character.id)}">确认删除</button>
       </div>`;
@@ -219,6 +222,34 @@ function renderDeleteControls(character, characterCount, osState) {
     <button class="character-delete-button" type="button" data-character-delete="${escapeHtml(character.id)}">
       删除这个角色
     </button>`;
+}
+
+function roleEntryCount(entries, characterId, fallbackCharacterId) {
+  return (entries || []).filter(entry => (entry.characterId || fallbackCharacterId) === characterId).length;
+}
+
+function renderRelationshipOverview(config, character) {
+  const characterId = character.id;
+  const sessions = (config.apps.chat.sessions || []).filter(item => item.characterId === characterId);
+  const messages = (config.apps.chat.messages || []).filter(item => item.characterId === characterId);
+  const memories = roleEntryCount(config.apps.memory?.entries, characterId, config.character.id);
+  const diaries = roleEntryCount(config.apps.diary?.entries, characterId, config.character.id);
+  const destinations = [
+    { appId: 'chat', label: '聊天', value: `${messages.length} 条`, enabled: config.apps.chat.enabled },
+    { appId: 'memory', label: '记忆', value: `${memories} 条`, enabled: config.apps.memory?.enabled },
+    { appId: 'diary', label: '日记', value: `${diaries} 篇`, enabled: config.apps.diary?.enabled }
+  ].filter(item => item.enabled);
+  return `
+    <section class="character-relationship-overview">
+      <header><strong>你们的记录</strong><small>${sessions.length} 个会话</small></header>
+      <div>
+        ${destinations.map(item => `
+          <button type="button" data-character-open-context="${item.appId}" data-character-id="${escapeHtml(characterId)}">
+            <span>${item.label}</span><strong>${item.value}</strong><i>›</i>
+          </button>
+        `).join('') || '<p>启用记忆或日记后，这里会出现角色专属记录。</p>'}
+      </div>
+    </section>`;
 }
 
 function renderCharacterDetail(app, config, osState, appConfig) {
@@ -238,8 +269,9 @@ function renderCharacterDetail(app, config, osState, appConfig) {
         <h3>${escapeHtml(character.name || app.name)}</h3>
         <span></span>
       </header>
-      ${renderCharacterStatus(appConfig)}
+      ${renderCharacterStatus(appConfig, config, osState, character)}
       ${renderProfileCard(character, appConfig)}
+      ${renderRelationshipOverview(config, character)}
       <div class="character-management-actions">
         <button type="button" data-character-move="-1" ${index === 0 ? 'disabled' : ''}>上移</button>
         <button type="button" data-character-move="1" ${index === characters.length - 1 ? 'disabled' : ''}>下移</button>
@@ -335,7 +367,7 @@ export const CharacterApp = {
     const appConfig = characterAppConfig(config);
     const view = osState.characterView || 'list';
     if (view === 'detail') return renderCharacterDetail(app, config, osState, appConfig);
-    return renderCharacterList(app, config, appConfig);
+      return renderCharacterList(app, config, appConfig, osState);
   },
 
   bind(container, config, handlers, osState = {}) {
@@ -412,6 +444,14 @@ export const CharacterApp = {
     });
     container.querySelector('[data-character-duplicate]')?.addEventListener('click', event => {
       handlers.duplicateCharacter?.(event.currentTarget.dataset.characterDuplicate);
+    });
+    container.querySelectorAll('[data-character-open-context]').forEach(button => {
+      button.addEventListener('click', () => {
+        handlers.openCharacterContext?.(
+          button.dataset.characterOpenContext,
+          button.dataset.characterId
+        );
+      });
     });
 
     container.querySelector('[data-character-delete]')?.addEventListener('click', event => {
