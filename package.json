@@ -25,7 +25,8 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
-    "gridstack": "^13.0.0"
+    "gridstack": "^13.0.0",
+    "NeteaseCloudMusicApi": "4.32.0"
   },
   "devDependencies": {
     "@music163/ncm-cli": "file:vendor/ncm-cli-package",

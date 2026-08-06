@@ -1,5 +1,5 @@
 import { getAiProviderStatuses } from './aiService.js?v=app-config-57';
-import { testMusicApi } from './musicService.js?v=app-config-91';
+import { musicBaseUrl, testMusicApi } from './musicService.js?v=app-config-91';
 
 function result(status, message) {
   return { status, message };
@@ -8,8 +8,9 @@ function result(status, message) {
 export async function checkStartupHealth(config, storageStatus = {}, dependencies = {}) {
   const online = dependencies.online ?? navigator.onLine;
   const checkAi = dependencies.checkAi || (() => getAiProviderStatuses(config));
-  const musicConfigured = Boolean(config.apps?.music?.onlineEnabled && config.apps?.music?.apiBaseUrl);
-  const checkMusic = dependencies.checkMusic || (() => testMusicApi(config.apps?.music?.apiBaseUrl));
+  const musicBase = musicBaseUrl(config);
+  const musicConfigured = Boolean(config.apps?.music?.onlineEnabled && musicBase);
+  const checkMusic = dependencies.checkMusic || (() => testMusicApi(musicBase));
   const musicEnabled = Boolean(config.apps?.music?.enabled);
 
   const [aiCheck, musicCheck] = await Promise.allSettled([

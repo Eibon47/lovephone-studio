@@ -4,6 +4,7 @@ const TRACK_STORE = 'tracks';
 const AUDIO_STORE = 'audio';
 const SESSION_STORE = 'session';
 const SESSION_KEY = 'netease-cookie';
+const NETLIFY_MUSIC_GATEWAY = '/.netlify/functions/music';
 
 let databasePromise = null;
 let audio = null;
@@ -64,7 +65,15 @@ function mimeAllowed(file) {
 }
 
 export function musicBaseUrl(config) {
-  return String(config?.apps?.music?.apiBaseUrl || '').trim().replace(/\/+$/, '');
+  const configured = String(config?.apps?.music?.apiBaseUrl || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  const hostname = String(globalThis.location?.hostname || '').toLowerCase();
+  const secure = globalThis.location?.protocol === 'https:';
+  return secure && !['localhost', '127.0.0.1'].includes(hostname) ? NETLIFY_MUSIC_GATEWAY : '';
+}
+
+export function usesBuiltInMusicGateway(config) {
+  return musicBaseUrl(config) === NETLIFY_MUSIC_GATEWAY;
 }
 
 export function normalizeMusicApiUrl(value) {
@@ -173,6 +182,14 @@ export async function clearMusicCookie() {
 }
 
 async function neteaseJson(baseUrl, path, params = {}) {
+  if (String(baseUrl || '').replace(/\/+$/, '') === NETLIFY_MUSIC_GATEWAY) {
+    const cookie = await readSessionCookie();
+    return musicFetchJson(NETLIFY_MUSIC_GATEWAY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, params, cookie })
+    });
+  }
   const base = normalizeMusicApiUrl(baseUrl);
   if (!base) throw new Error('请先填写可信的 HTTPS 兼容音乐 API 地址。');
   const url = new URL(`${base}${path}`);

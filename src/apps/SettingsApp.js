@@ -22,7 +22,8 @@ import {
   musicBaseUrl,
   normalizeMusicApiUrl,
   startQrLogin,
-  testMusicApi
+  testMusicApi,
+  usesBuiltInMusicGateway
 } from '../services/musicService.js?v=app-config-91';
 import { searchWeatherCity } from '../services/weatherService.js?v=app-config-52';
 
@@ -211,26 +212,31 @@ function renderAISettings(config, osState = {}) {
 function renderMusicSettings(config, osState = {}) {
   if (!config.apps?.music?.enabled) return '';
   const music = config.apps.music;
+  const musicEndpoint = musicBaseUrl(config);
+  const builtInMusic = usesBuiltInMusicGateway(config);
+  const onlineReady = Boolean(music.onlineEnabled && musicEndpoint);
   const status = osState.musicConnectionMessage
-    || (music.onlineEnabled && music.apiBaseUrl ? '在线音乐已配置，建议先测试连接' : '本地音乐已可用');
+    || (onlineReady ? (builtInMusic ? 'LovePhone 内置音乐服务已就绪' : '在线音乐已配置，建议先测试连接') : '本地音乐已可用');
   return settingsGroup('♪', '音乐服务', status, `
     ${settingToggle('apps.music.onlineEnabled', '启用在线音乐', music.onlineEnabled, '关闭后仅保留本地上传和浏览器播放。')}
-    ${settingInput('apps.music.apiBaseUrl', '兼容 API 地址', music.apiBaseUrl, {
+    ${settingInput('apps.music.apiBaseUrl', '备用兼容 API 地址（可选）', music.apiBaseUrl, {
       type: 'url',
       placeholder: 'https://your-music-api.example',
-      desc: '填写你自己部署或信任的 NeteaseCloudMusicApi 兼容 HTTPS 地址。'
+      desc: builtInMusic
+        ? '当前网站会自动使用 LovePhone 内置音乐服务；只有改用自己的服务时才需要填写。'
+        : '部署到 Netlify 后会自动使用内置音乐服务；本地预览可填写自己的兼容 HTTPS 地址。'
     })}
     ${settingToggle('apps.music.showRecommendations', '首页推荐', music.showRecommendations)}
     ${settingToggle('apps.music.showLyrics', '歌词入口', music.showLyrics)}
     <div class="ai-connection-actions music-connection-actions">
       <button type="button" data-music-test>测试音乐连接</button>
-      <button type="button" data-music-login ${music.onlineEnabled && music.apiBaseUrl ? '' : 'disabled'}>扫码登录网易云</button>
+      <button type="button" data-music-login ${onlineReady ? '' : 'disabled'}>扫码登录网易云</button>
       ${osState.musicLoggedIn ? '<button type="button" data-music-logout>退出音乐登录</button>' : ''}
       <span data-music-live-status>${escapeHtml(status)}</span>
     </div>
     ${osState.musicQrImage ? `<div class="music-qr-panel"><img src="${escapeHtml(osState.musicQrImage)}" alt="网易云登录二维码" /><small>${escapeHtml(osState.musicQrMessage || '请使用网易云音乐 App 扫码并确认')}</small></div>` : ''}
-    <p class="settings-security-note">本地音乐只保存在当前设备。扫码登录会把凭证保存在当前浏览器，并传给你填写的音乐 API；不要使用不可信的公共服务。</p>
-  `, music.onlineEnabled && music.apiBaseUrl ? 'is-connected' : 'needs-config');
+    <p class="settings-security-note">本地音乐只保存在当前设备。扫码登录凭证只保存在当前浏览器；内置服务不会保存它。${builtInMusic ? '' : '请不要使用不可信的公共音乐服务。'}</p>
+  `, onlineReady ? 'is-connected' : 'needs-config');
 }
 
 function renderWeatherSettings(config) {
@@ -523,10 +529,10 @@ export const SettingsApp = {
     if (!osState.aiStatusLoaded) refreshAiStatuses();
 
     let musicQrTimer = null;
-    const musicBaseFromForm = () => normalizeMusicApiUrl(
-      container.querySelector('[data-settings-value="apps.music.apiBaseUrl"]')?.value
-      || musicBaseUrl(handlers.getConfig?.() || config)
-    );
+    const musicBaseFromForm = () => {
+      const customBase = container.querySelector('[data-settings-value="apps.music.apiBaseUrl"]')?.value?.trim();
+      return customBase ? normalizeMusicApiUrl(customBase) : musicBaseUrl(handlers.getConfig?.() || config);
+    };
     const testMusicConnection = async ({ quiet = false } = {}) => {
       const latest = handlers.getConfig?.() || config;
       const base = musicBaseFromForm();
@@ -543,7 +549,8 @@ export const SettingsApp = {
           musicBridgeAvailable: true,
           musicConnectionMessage: result.message || '在线音乐服务已连接'
         });
-        handlers.updatePath?.('apps.music.apiBaseUrl', base, { keepPhone: true, noRender: true });
+        const customBase = container.querySelector('[data-settings-value="apps.music.apiBaseUrl"]')?.value?.trim();
+        if (customBase) handlers.updatePath?.('apps.music.apiBaseUrl', base, { keepPhone: true, noRender: true });
       } catch (error) {
         if (button) button.disabled = false;
         if (liveStatus) liveStatus.textContent = error.message || '在线音乐服务无法连接';

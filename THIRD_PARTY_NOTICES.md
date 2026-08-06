@@ -26,3 +26,12 @@
 - Usage: local ZIP import and export for offline LovePhone theme packages
 
 The full license text is included at `assets/vendor/fflate/LICENSE`.
+
+## NeteaseCloudMusicApi
+
+- Version: 4.32.0
+- License: MIT
+- Source: https://www.npmjs.com/package/NeteaseCloudMusicApi
+- Usage: Netlify music gateway invokes only a fixed allowlist of the package's Node.js API modules. It does not expose the package's full HTTP API surface.
+
+NeteaseCloudMusicApi is a third-party compatibility project. Its MIT license does not grant rights to distribute, display, or play music content, lyrics, artwork, or account data. Public operation must separately comply with applicable service terms and content licensing requirements.
