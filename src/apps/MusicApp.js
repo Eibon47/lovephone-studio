@@ -291,10 +291,21 @@ export const MusicApp = {
     container.querySelector('[data-music-play-all]')?.addEventListener('click', () => { const first = (osState.musicPlaylistTracks || [])[0]; if (first) void playSelected(first, config, handlers, osState, osState.musicPlaylistTracks); });
     container.querySelectorAll('[data-music-back-discover]').forEach(button => button.addEventListener('click', () => handlers.updatePhoneState?.({ musicView: 'discover', musicStatus: '' })));
     container.querySelectorAll('[data-music-open-library]').forEach(button => button.addEventListener('click', async () => {
-      const account = osState.musicAccount;
+      let account = osState.musicAccount;
       if (!account?.userId) {
-        handlers.openApp?.('settings');
-        return;
+        handlers.updatePhoneState?.({ musicStatus: '正在检查网易云登录状态…' });
+        try {
+          account = await loadSavedMusicAccount() || await loadOnlineMusicAccount(base);
+          if (account?.userId) {
+            handlers.updatePhoneState?.({ musicAccount: account, musicLoggedIn: true, musicAccountLoaded: true });
+          }
+        } catch {
+          account = null;
+        }
+        if (!account?.userId) {
+          handlers.updatePhoneState?.({ musicStatus: '你还没有登录网易云。请前往“设置 App → 音乐服务 → 扫码登录网易云”完成登录后再试。' });
+          return;
+        }
       }
       handlers.updatePhoneState?.({ musicView: 'personal', musicPersonalPlaylists: [], musicStatus: '正在读取你的网易云歌单…' });
       try {

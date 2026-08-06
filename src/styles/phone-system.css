@@ -3260,8 +3260,9 @@
 
 .music-player-controls {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: minmax(42px, 1fr) auto minmax(42px, 1fr);
   align-items: center;
+  justify-items: center;
   margin-top: 4px;
 }
 
