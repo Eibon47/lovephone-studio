@@ -1,4 +1,5 @@
-const DB_NAME = 'lovePhoneCustomizations';
+const exportedPhoneId = String(globalThis.__LOVE_PHONE_EXPORT__?.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+const DB_NAME = exportedPhoneId ? `lovePhoneCustomizations-${exportedPhoneId}` : 'lovePhoneCustomizations';
 const DB_VERSION = 1;
 const PACKAGE_STORE = 'packages';
 const ASSET_STORE = 'assets';

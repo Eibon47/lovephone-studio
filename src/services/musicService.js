@@ -1,4 +1,5 @@
-const DB_NAME = 'lovePhoneStudioMusic';
+const exportedPhoneId = String(globalThis.__LOVE_PHONE_EXPORT__?.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+const DB_NAME = exportedPhoneId ? `lovePhoneStudioMusic-${exportedPhoneId}` : 'lovePhoneStudioMusic';
 const DB_VERSION = 1;
 const TRACK_STORE = 'tracks';
 const AUDIO_STORE = 'audio';
@@ -68,6 +69,7 @@ function mimeAllowed(file) {
 export function musicBaseUrl(config) {
   const configured = String(config?.apps?.music?.apiBaseUrl || '').trim().replace(/\/+$/, '');
   if (configured) return configured;
+  if (globalThis.__LOVE_PHONE_EXPORT__?.config) return '';
   const hostname = String(globalThis.location?.hostname || '').toLowerCase();
   const secure = globalThis.location?.protocol === 'https:';
   return secure && !['localhost', '127.0.0.1'].includes(hostname) ? NETLIFY_MUSIC_GATEWAY : '';

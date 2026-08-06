@@ -66,13 +66,18 @@ import {
   downloadThemePackage,
   inspectThemePackage
 } from './services/themePackageService.js';
+import {
+  createStandalonePhoneArchive,
+  downloadStandalonePhoneArchive
+} from './services/standalonePhoneExportService.js';
 import { getCustomizationStore } from './storage/customizationStore.js';
 
 const app = document.getElementById('app');
+const exportedPhone = globalThis.__LOVE_PHONE_EXPORT__;
 const phoneMode = isPhoneMode(
   location.search,
   window.matchMedia?.('(display-mode: standalone)').matches
-);
+) || Boolean(exportedPhone?.config);
 const steps = [
   { id: 'apps', label: '功能' },
   { id: 'appearance', label: '美化' },
@@ -97,7 +102,10 @@ async function loadRuntimeCapabilities() {
 const runtimeCapabilities = await loadRuntimeCapabilities();
 
 const state = {
-  config: await loadConfig(),
+  config: await loadConfig({
+    seedConfig: exportedPhone?.config,
+    isolated: Boolean(exportedPhone?.config)
+  }),
   activeStep: 'apps',
   phone: {
     currentApp: 'home',
@@ -1445,6 +1453,18 @@ function createPhoneHandlers() {
     exportJson: () => {
       const filename = exportConfig(state.config);
       state.ui.statusMessage = `已导出 ${filename}`;
+    },
+    downloadStandaloneHtml: async () => {
+      try {
+        state.ui.statusMessage = '正在打包本地 HTML 小手机…';
+        render();
+        const archive = await createStandalonePhoneArchive(state.config);
+        downloadStandalonePhoneArchive(archive);
+        state.ui.statusMessage = `已下载 ${archive.filename}，共 ${archive.fileCount} 个文件。`;
+      } catch (error) {
+        state.ui.statusMessage = error.message || '本地 HTML 导出失败，请检查网络后重试。';
+      }
+      render();
     },
     importJson: async file => {
       try {

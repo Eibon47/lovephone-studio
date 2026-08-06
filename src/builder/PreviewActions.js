@@ -51,6 +51,7 @@ export function renderPreviewActions(config, uiState) {
       <div class="action-grid">
         <button class="primary-action" type="button" data-action="save">保存到本地</button>
         <button type="button" data-action="open-phone">打开我的小手机</button>
+        <button type="button" data-action="download-html">下载本地 HTML</button>
         <button type="button" data-action="install">安装到设备</button>
         <button type="button" data-action="backup">立即备份</button>
         <button type="button" data-action="restore-backup"${storage.backupCount ? '' : ' disabled'}>恢复最近备份</button>
@@ -73,6 +74,7 @@ export function renderPreviewActions(config, uiState) {
 export function bindPreviewActions(root, handlers) {
   root.querySelector('[data-action="save"]')?.addEventListener('click', handlers.save);
   root.querySelector('[data-action="open-phone"]')?.addEventListener('click', handlers.openStandalone);
+  root.querySelector('[data-action="download-html"]')?.addEventListener('click', handlers.downloadStandaloneHtml);
   root.querySelector('[data-action="install"]')?.addEventListener('click', handlers.install);
   root.querySelector('[data-action="backup"]')?.addEventListener('click', handlers.backup);
   root.querySelector('[data-action="restore-backup"]')?.addEventListener('click', handlers.restoreBackup);

@@ -1,7 +1,8 @@
 import { defaultConfig } from '../config/defaultConfig.js?v=app-config-95';
 import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-95';
 
-const DB_NAME = 'lovePhoneStudio';
+const exportedPhoneId = String(globalThis.__LOVE_PHONE_EXPORT__?.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+const DB_NAME = exportedPhoneId ? `lovePhoneStudio-${exportedPhoneId}` : 'lovePhoneStudio';
 const DB_VERSION = 1;
 const CONFIG_STORE = 'configs';
 const BACKUP_STORE = 'backups';
@@ -208,12 +209,12 @@ export function setStorageStatusListener(listener) {
   };
 }
 
-export async function loadConfig() {
+export async function loadConfig(options = {}) {
   try {
     const database = await openDatabase();
     const stored = await readCurrentRecord(database);
-    const legacy = stored ? null : readLegacyConfig();
-    const normalized = normalizeConfig(stored?.config || legacy || defaultConfig);
+    const legacy = stored || options.isolated ? null : readLegacyConfig();
+    const normalized = normalizeConfig(stored?.config || legacy || options.seedConfig || defaultConfig);
     const backups = await readBackups(database);
     lastBackupAt = backups.length ? Date.parse(backups[0].createdAt) : 0;
     await writeCurrent(database, normalized, {

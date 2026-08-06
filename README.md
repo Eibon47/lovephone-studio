@@ -61,6 +61,10 @@ AI 桥接默认使用 `5189` 端口。旧的 MPV / CLI 音乐桥接仅保留为�
 
 ```text
 http://127.0.0.1:5177/?mode=phone
+
+### 导出纯 HTML 小手机
+
+“完成”页的“下载本地 HTML”会生成一个独立 ZIP：其中含 `index.html`、运行代码、素材和当前小手机配置。解压后可直接查看，也可以把整个文件夹部署到 Netlify、GitHub Pages、Vercel 或任意静态网站空间。导出文件不含 API Key、网易云登录 Cookie 或本地导入的音频文件；AI、在线音乐和天气仍需由使用者自行配置可访问的服务。
 ```
 
 Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
