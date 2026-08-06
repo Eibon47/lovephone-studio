@@ -3,6 +3,8 @@ import { renderStatusBar } from '../system/StatusBar.js';
 import {
   deleteLocalAudio,
   importLocalAudio,
+  loadOnlineMusicAccount,
+  loadOnlineUserPlaylists,
   loadLocalTracks,
   loadOnlineHome,
   loadOnlineLyrics,
@@ -11,6 +13,7 @@ import {
   playMusicTrack,
   playNext,
   playPrevious,
+  loadSavedMusicAccount,
   resolveOnlineStream,
   searchOnlineMusic,
   seekMusic,
@@ -134,6 +137,21 @@ function renderLibrary(osState) {
   </section>`;
 }
 
+function renderPersonal(osState) {
+  const account = osState.musicAccount;
+  const playlists = osState.musicPersonalPlaylists || [];
+  return `<section class="phone-screen phone-music-app phone-music-library">
+    ${renderStatusBar('music-statusbar')}
+    <header class="music-app-header"><button type="button" data-music-back-discover aria-label="返回音乐首页">‹</button><strong>我的音乐</strong><span></span></header>
+    <div class="music-scroll-area">
+      ${account ? `<div class="music-personal-account"><i>${escapeHtml(String(account.nickname || '云').slice(0, 1))}</i><span><strong>${escapeHtml(account.nickname || '网易云账号')}</strong><small>我的歌单</small></span></div>` : ''}
+      ${account ? `<div class="music-section-heading"><strong>创建和收藏的歌单</strong><span>${playlists.length ? `${playlists.length} 个歌单` : '加载中'}</span></div><div class="music-playlist-grid">${playlists.length ? renderPlaylistCards(playlists) : '<p class="music-empty-library">正在读取你的网易云歌单…</p>'}</div>` : '<p class="music-empty-library">请先在设置中扫码登录网易云，再查看你的个人歌单。</p>'}
+      ${osState.musicStatus ? `<p class="music-status-message">${escapeHtml(osState.musicStatus)}</p>` : ''}
+    </div>
+    ${renderMiniPlayer(osState.musicTrack, osState.musicPlayback)}
+  </section>`;
+}
+
 function renderPlayer(config, osState) {
   const track = osState.musicTrack || demoTracks[0];
   const playback = osState.musicPlayback || {};
@@ -187,6 +205,7 @@ export const MusicApp = {
     const viewConfig = preview ? { ...config, apps: { ...config.apps, music: { ...config.apps.music, onlineEnabled: true, showRecommendations: true, showLyrics: true } } } : config;
     if (state.musicView === 'player') return renderPlayer(viewConfig, state);
     if (state.musicView === 'playlist') return renderPlaylist(state);
+    if (state.musicView === 'personal') return renderPersonal(state);
     if (state.musicView === 'library') return renderLibrary(state);
     return renderDiscover(viewConfig, state);
   },
@@ -202,6 +221,12 @@ export const MusicApp = {
 
     if (!osState.musicLocalLoaded) {
       loadLocalTracks().then(tracks => handlers.updatePhoneState?.({ musicLocalTracks: tracks, musicLocalLoaded: true })).catch(error => handlers.updatePhoneState?.({ musicLocalLoaded: true, musicStatus: error.message }));
+    }
+    if (!osState.musicAccountLoaded) {
+      loadSavedMusicAccount()
+        .then(musicAccount => musicAccount || (base ? loadOnlineMusicAccount(base).catch(() => null) : null))
+        .then(musicAccount => handlers.updatePhoneState?.({ musicAccount, musicLoggedIn: Boolean(musicAccount), musicAccountLoaded: true }))
+        .catch(() => handlers.updatePhoneState?.({ musicAccountLoaded: true }));
     }
     if (config.apps.music.onlineEnabled && base && !osState.musicHomeLoaded && !osState.musicHomeLoading) {
       handlers.updatePhoneState?.({ musicHomeLoading: true, musicStatus: '正在加载在线音乐…' });
@@ -257,7 +282,7 @@ export const MusicApp = {
       }
     }));
     container.querySelectorAll('[data-music-playlist-id]').forEach(button => button.addEventListener('click', async () => {
-      const playlist = (osState.musicHome?.charts || []).find(item => item.id === button.dataset.musicPlaylistId);
+      const playlist = [...(osState.musicHome?.charts || []), ...(osState.musicPersonalPlaylists || [])].find(item => item.id === button.dataset.musicPlaylistId);
       if (!playlist || !base) return;
       handlers.updatePhoneState?.({ musicView: 'playlist', musicPlaylist: playlist, musicPlaylistTracks: [], musicStatus: '正在加载歌单…' });
       try { const playlistTracks = await loadOnlinePlaylist(base, playlist.id); handlers.updatePhoneState?.({ musicPlaylistTracks: playlistTracks, musicStatus: '' }); }
@@ -265,14 +290,33 @@ export const MusicApp = {
     }));
     container.querySelector('[data-music-play-all]')?.addEventListener('click', () => { const first = (osState.musicPlaylistTracks || [])[0]; if (first) void playSelected(first, config, handlers, osState, osState.musicPlaylistTracks); });
     container.querySelectorAll('[data-music-back-discover]').forEach(button => button.addEventListener('click', () => handlers.updatePhoneState?.({ musicView: 'discover', musicStatus: '' })));
-    container.querySelectorAll('[data-music-open-library]').forEach(button => button.addEventListener('click', () => handlers.updatePhoneState?.({ musicView: 'library', musicStatus: '' })));
+    container.querySelectorAll('[data-music-open-library]').forEach(button => button.addEventListener('click', async () => {
+      const account = osState.musicAccount;
+      if (!account?.userId) {
+        handlers.openApp?.('settings');
+        return;
+      }
+      handlers.updatePhoneState?.({ musicView: 'personal', musicPersonalPlaylists: [], musicStatus: '正在读取你的网易云歌单…' });
+      try {
+        const musicPersonalPlaylists = await loadOnlineUserPlaylists(base, account.userId);
+        handlers.updatePhoneState?.({ musicView: 'personal', musicPersonalPlaylists, musicStatus: '' });
+      } catch (error) {
+        handlers.updatePhoneState?.({ musicView: 'personal', musicStatus: error.message || '个人歌单读取失败。' });
+      }
+    }));
     container.querySelectorAll('[data-music-jump]').forEach(button => button.addEventListener('click', () => container.querySelector(`#music-${button.dataset.musicJump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
     container.querySelector('[data-music-open-player]')?.addEventListener('click', () => handlers.updatePhoneState?.({ musicView: 'player' }));
     container.querySelector('[data-music-close-player]')?.addEventListener('click', () => handlers.updatePhoneState?.({ musicView: osState.musicReturnView || 'discover' }));
     container.querySelector('[data-music-player-tab]')?.addEventListener('click', event => handlers.updatePhoneState?.({ musicPlayerTab: event.currentTarget.dataset.musicPlayerTab }));
     container.querySelectorAll('[data-music-toggle]').forEach(button => button.addEventListener('click', async () => { try { const result = await toggleMusicPlayback(); handlers.updatePhoneState?.({ musicPlayback: result.state, musicPlaying: result.state.status === 'playing', musicStatus: '' }); } catch (error) { handlers.updatePhoneState?.({ musicStatus: error.message }); } }));
     container.querySelectorAll('[data-music-control]').forEach(button => button.addEventListener('click', async () => { try { const result = button.dataset.musicControl === 'prev' ? await playPrevious(onlineResolver(config)) : await playNext(1, onlineResolver(config)); handlers.updatePhoneState?.({ musicTrack: result.track, musicPlayback: result.state, musicPlaying: result.state.status === 'playing', musicStatus: '' }); } catch (error) { handlers.updatePhoneState?.({ musicStatus: error.message || '切歌失败。' }); } }));
-    container.querySelector('[data-music-seek]')?.addEventListener('change', event => { const result = seekMusic(event.currentTarget.value); handlers.updatePhoneState?.({ musicPlayback: result.state }); });
+    container.querySelector('[data-music-seek]')?.addEventListener('input', event => {
+      seekMusic(event.currentTarget.value);
+    });
+    container.querySelector('[data-music-seek]')?.addEventListener('change', event => {
+      const result = seekMusic(event.currentTarget.value);
+      handlers.updatePhoneState?.({ musicPlayback: result.state });
+    });
     container.querySelector('[data-music-volume]')?.addEventListener('change', event => { const result = setMusicVolume(event.currentTarget.value); handlers.updatePhoneState?.({ musicPlayback: result.state }); });
   }
 };

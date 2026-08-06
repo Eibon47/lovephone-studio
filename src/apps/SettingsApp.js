@@ -586,7 +586,13 @@ export const SettingsApp = {
             const status = await checkQrLogin(base, result.key);
             if (status.code === 803) {
               clearInterval(musicQrTimer);
-              handlers.updatePhoneState?.({ musicQrImage: '', musicQrMessage: '', musicLoggedIn: true, musicConnectionMessage: `${status.nickname || '网易云账号'} 已登录` });
+              handlers.updatePhoneState?.({
+                musicQrImage: '',
+                musicQrMessage: '',
+                musicLoggedIn: true,
+                musicAccount: status.userId ? { userId: status.userId, nickname: status.nickname || '网易云账号' } : null,
+                musicConnectionMessage: `${status.nickname || '网易云账号'} 已登录`
+              });
             } else if (status.code === 800) {
               clearInterval(musicQrTimer);
               handlers.updatePhoneState?.({ musicQrImage: '', musicQrMessage: '', musicConnectionMessage: '二维码已过期，请重新获取。' });
@@ -606,7 +612,7 @@ export const SettingsApp = {
     container.querySelector('[data-music-logout]')?.addEventListener('click', async () => {
       clearInterval(musicQrTimer);
       await clearMusicCookie();
-      handlers.updatePhoneState?.({ musicLoggedIn: false, musicQrImage: '', musicQrMessage: '', musicConnectionMessage: '已退出当前浏览器中的音乐登录。' });
+      handlers.updatePhoneState?.({ musicLoggedIn: false, musicAccount: null, musicQrImage: '', musicQrMessage: '', musicConnectionMessage: '已退出当前浏览器中的音乐登录。' });
     });
 
     container.querySelector('[data-ai-connect]')?.addEventListener('click', async event => {

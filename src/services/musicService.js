@@ -4,6 +4,7 @@ const TRACK_STORE = 'tracks';
 const AUDIO_STORE = 'audio';
 const SESSION_STORE = 'session';
 const SESSION_KEY = 'netease-cookie';
+const SESSION_ACCOUNT_KEY = 'netease-account';
 const NETLIFY_MUSIC_GATEWAY = '/.netlify/functions/music';
 
 let databasePromise = null;
@@ -178,7 +179,31 @@ export async function clearMusicCookie() {
   const database = await openDatabase();
   const transaction = database.transaction(SESSION_STORE, 'readwrite');
   transaction.objectStore(SESSION_STORE).delete(SESSION_KEY);
+  transaction.objectStore(SESSION_STORE).delete(SESSION_ACCOUNT_KEY);
   await transactionDone(transaction);
+}
+
+export async function saveMusicAccount(account = {}) {
+  const userId = safeText(account.userId);
+  if (!userId) return;
+  const database = await openDatabase();
+  const transaction = database.transaction(SESSION_STORE, 'readwrite');
+  transaction.objectStore(SESSION_STORE).put({
+    userId,
+    nickname: safeText(account.nickname, '网易云账号')
+  }, SESSION_ACCOUNT_KEY);
+  await transactionDone(transaction);
+}
+
+export async function loadSavedMusicAccount() {
+  const database = await openDatabase();
+  const transaction = database.transaction(SESSION_STORE, 'readonly');
+  const account = await requestResult(transaction.objectStore(SESSION_STORE).get(SESSION_ACCOUNT_KEY));
+  await transactionDone(transaction);
+  return account?.userId ? {
+    userId: safeText(account.userId),
+    nickname: safeText(account.nickname, '网易云账号')
+  } : null;
 }
 
 async function neteaseJson(baseUrl, path, params = {}) {
@@ -263,6 +288,22 @@ export async function loadOnlinePlaylist(baseUrl, playlistId) {
   return (data?.songs || []).map(mapNeteaseTrack);
 }
 
+export async function loadOnlineUserPlaylists(baseUrl, userId) {
+  if (!safeText(userId)) throw new Error('请先扫码登录网易云音乐。');
+  const data = await neteaseJson(baseUrl, '/user/playlist', { uid: userId, limit: 100, offset: 0 });
+  return (data?.playlist || []).map(mapPlaylist);
+}
+
+export async function loadOnlineMusicAccount(baseUrl) {
+  const data = await neteaseJson(baseUrl, '/login/status');
+  const profile = data?.data?.profile || data?.profile || {};
+  const userId = safeText(profile.userId || profile.user_id);
+  if (!userId) return null;
+  const account = { userId, nickname: safeText(profile.nickname, '网易云账号') };
+  await saveMusicAccount(account);
+  return account;
+}
+
 export async function loadOnlineLyrics(baseUrl, trackId) {
   const data = await neteaseJson(baseUrl, '/lyric', { id: trackId });
   return String(data?.lrc?.lyric || '');
@@ -290,17 +331,21 @@ export async function startQrLogin(baseUrl) {
 export async function checkQrLogin(baseUrl, key) {
   const data = await neteaseJson(baseUrl, '/login/qr/check', { key });
   if (Number(data?.code) === 803 && data?.cookie) await saveMusicCookie(data.cookie);
+  const profile = data?.profile || data?.data?.profile || {};
+  const userId = safeText(profile.userId || profile.user_id);
+  const nickname = safeText(profile.nickname, '网易云账号');
+  if (Number(data?.code) === 803 && userId) await saveMusicAccount({ userId, nickname });
   return {
     code: Number(data?.code) || 0,
     message: safeText(data?.message),
-    nickname: safeText(data?.profile?.nickname),
+    nickname,
+    userId,
     loggedIn: Number(data?.code) === 803
   };
 }
 
 export function setMusicStateListener(listener) {
   statusListener = typeof listener === 'function' ? listener : null;
-  if (statusListener) statusListener(snapshot());
 }
 
 function snapshot() {

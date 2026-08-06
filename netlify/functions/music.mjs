@@ -16,6 +16,7 @@ const ROUTES = {
   '/login/qr/key': { module: 'login_qr_key', fields: [] },
   '/login/qr/create': { module: 'login_qr_create', fields: ['key', 'qrimg'] },
   '/login/qr/check': { module: 'login_qr_check', fields: ['key'] },
+  '/login/status': { module: 'login_status', fields: [] },
   '/user/playlist': { module: 'user_playlist', fields: ['uid', 'limit', 'offset'] }
 };
 
@@ -29,6 +30,7 @@ const moduleLoaders = {
   login_qr_key: () => import('NeteaseCloudMusicApi/module/login_qr_key.js'),
   login_qr_create: () => import('NeteaseCloudMusicApi/module/login_qr_create.js'),
   login_qr_check: () => import('NeteaseCloudMusicApi/module/login_qr_check.js'),
+  login_status: () => import('NeteaseCloudMusicApi/module/login_status.js'),
   user_playlist: () => import('NeteaseCloudMusicApi/module/user_playlist.js')
 };
 

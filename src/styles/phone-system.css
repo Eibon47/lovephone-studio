@@ -3697,6 +3697,8 @@
 }
 
 .music-progress-range {
+  touch-action: pan-x;
+  cursor: pointer;
   height: 18px;
   margin: 0;
 }
