@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from '../../assets/vendor/fflate/fflate.js';
 import { normalizeConfig } from '../config/schema.js';
+import { getCustomAppStore } from '../storage/customAppStore.js';
 
 const RUNTIME_FILES = [
   'index.html', 'manifest.webmanifest', 'sw.js',
@@ -26,10 +27,10 @@ const RUNTIME_FILES = [
   'src/services/diarySummaryService.js', 'src/services/greetingService.js', 'src/services/imageUploadService.js', 'src/services/listUndo.js',
   'src/services/musicService.js', 'src/services/phoneNotificationService.js', 'src/services/phoneSetupService.js', 'src/services/pwaService.js',
   'src/services/speechRecognitionService.js', 'src/services/standalonePhoneExportService.js', 'src/services/startupHealthService.js', 'src/services/themePackageService.js', 'src/services/weatherService.js',
-  'src/storage/customizationStore.js', 'src/storage/localConfigStore.js',
+  'src/services/customAppPackageService.js', 'src/storage/customizationStore.js', 'src/storage/customAppStore.js', 'src/storage/localConfigStore.js',
   'src/styles/base.css', 'src/styles/builder.css', 'src/styles/phone-preview.css', 'src/styles/phone-system.css',
   'src/system/appAppearance.js', 'src/system/appRegistry.js', 'src/system/AppRouter.js', 'src/system/customizationRuntime.js',
-  'src/system/customWidgetRuntime.js', 'src/system/GridStackWidgets.js', 'src/system/HomeScreen.js', 'src/system/HomeWidgetActions.js',
+  'src/system/customWidgetRuntime.js', 'src/system/CustomAppRuntime.js', 'src/system/GridStackWidgets.js', 'src/system/HomeScreen.js', 'src/system/HomeWidgetActions.js',
   'src/system/html.js', 'src/system/icons.js', 'src/system/LovePhoneOS.js', 'src/system/options.js', 'src/system/StatusBar.js', 'src/system/widgetCatalog.js'
 ];
 
@@ -51,7 +52,7 @@ function scriptJson(value) {
 
 function exportedIndex(source, title) {
   const withTitle = source.replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeFileName(title, '我的小手机')}</title>`);
-  const configScript = '<script src="./lovephone.config.js"></script>';
+  const configScript = '<script src="./lovephone.config.js"></script>\n    <script src="./lovephone.custom-apps.js"></script>';
   if (!withTitle.includes('src/main.js')) throw new Error('小手机运行时入口不完整，无法导出。');
   return withTitle.replace(/(<script\s+type="module"\s+src="src\/main\.js[^>]*><\/script>)/i, `${configScript}\n    $1`);
 }
@@ -74,14 +75,21 @@ function exportedReadme(config) {
   return `# ${config.meta?.title || '我的小手机'}\n\n这是一个独立的纯 HTML 小手机。\n\n## 使用\n\n- 电脑上可直接打开 index.html 查看基础界面。\n- 推荐上传整个文件夹到 Netlify、GitHub Pages、Vercel 或任意静态网站空间后使用。\n- 部署到自己的网址后，可以在手机浏览器中打开，并使用“添加到主屏幕”。\n\n## 数据与联网能力\n\n- 角色、聊天、日记、主题和图片会保存到当前浏览器。\n- 这份导出不包含 API Key、浏览器中的登录 Cookie 或本地导入的音频文件。\n- AI、在线音乐和天气仍需要你自行配置可访问的服务；纯 HTML 成品不内置服务器。\n`;
 }
 
-function buildExportFiles(config, runtime, id) {
+function bytesToBase64(bytes) {
+  let text = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) text += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(text);
+}
+
+function buildExportFiles(config, runtime, id, customApps = []) {
   const files = { ...runtime };
   files['index.html'] = strToU8(exportedIndex(new TextDecoder().decode(runtime['index.html']), config.meta?.title));
   files['manifest.webmanifest'] = strToU8(exportedManifest(config));
   files['lovephone.config.js'] = strToU8(`globalThis.__LOVE_PHONE_EXPORT__ = ${scriptJson({ formatVersion: 1, id, config })};\n`);
+  files['lovephone.custom-apps.js'] = strToU8(`globalThis.__LOVE_PHONE_EXPORT_APPS__ = ${scriptJson({ formatVersion: 1, apps: customApps.map(app => ({ id: app.id, permissions: app.permissions || [], archive: bytesToBase64(app.archive instanceof Uint8Array ? app.archive : new Uint8Array(app.archive)) })) })};\n`);
   if (runtime['sw.js']) {
     const source = new TextDecoder().decode(runtime['sw.js']);
-    files['sw.js'] = strToU8(source.replace('const APP_SHELL = [', "const APP_SHELL = [\n  './lovephone.config.js',"));
+    files['sw.js'] = strToU8(source.replace('const APP_SHELL = [', "const APP_SHELL = [\n  './lovephone.config.js',\n  './lovephone.custom-apps.js',"));
   }
   files['README-本地小手机.md'] = strToU8(exportedReadme(config));
   return files;
@@ -105,7 +113,8 @@ export async function createStandalonePhoneArchive(config, fetchImpl = globalThi
   const normalized = normalizeConfig(config);
   const runtime = await fetchRuntime(fetchImpl);
   const id = exportId();
-  const files = buildExportFiles(normalized, runtime, id);
+  const customApps = await getCustomAppStore().exportApps().catch(() => []);
+  const files = buildExportFiles(normalized, runtime, id, customApps);
   return {
     bytes: zipSync(files, { level: 6 }),
     fileCount: Object.keys(files).length,

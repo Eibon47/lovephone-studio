@@ -160,7 +160,23 @@ function aiBlock(appId, app) {
   `;
 }
 
-function renderAppList(config, runtimeCapabilities = {}) {
+function renderCustomAppArea(uiState = {}) {
+  const apps = uiState.customApps || [];
+  const preview = uiState.customAppImportPreview;
+  if (preview) {
+    const app = preview.manifest;
+    return `<section class="custom-app-builder-card"><div class="section-heading"><span>安装预检</span><h2>${escapeHtml(app.name)}</h2><p>版本 ${escapeHtml(app.version)}，${preview.summary.pageCount} 个页面，${Math.ceil(preview.summary.archiveBytes / 1024)} KB。</p></div><dl class="custom-app-summary"><dt>请求权限</dt><dd>${app.permissions.length ? escapeHtml(app.permissions.join('、')) : '无'}</dd><dt>联网域名</dt><dd>${app.networkOrigins.length ? escapeHtml(app.networkOrigins.join('、')) : '不联网'}</dd></dl><p class="settings-security-note">App 代码将在独立页面中运行。只会获得你在这里确认的系统能力。</p><div class="flow-actions"><button type="button" data-cancel-custom-app>取消</button><button class="primary-action" type="button" data-install-custom-app>确认安装</button></div></section>`;
+  }
+  if (uiState.customAppManagerId) {
+    const app = apps.find(item => item.id === uiState.customAppManagerId);
+    if (!app) return '';
+    const permissions = app.manifest?.permissions || [];
+    return `<section class="custom-app-builder-card"><div class="section-heading"><span>自定义 App 管理</span><h2>${escapeHtml(app.name)}</h2><p>${escapeHtml(app.id)} · ${escapeHtml(app.manifest?.version || '')}</p></div><label class="setting-field"><span><strong>桌面名称</strong><small>只改变这台小手机中的显示名称。</small></span><input data-custom-app-name value="${escapeHtml(app.name)}" /></label><label class="setting-field"><span><strong>自定义图标</strong><small>PNG、JPG、WebP 或 GIF 图片。</small></span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-custom-app-icon /></label><div class="setting-group"><div class="setting-group-title"><strong>权限管理</strong><small>关闭后，App 对应的系统 API 会直接返回中文错误。</small></div><div class="mini-check-grid">${permissions.map(permission => `<label><input type="checkbox" data-custom-app-permission value="${escapeHtml(permission)}" ${(app.permissions || []).includes(permission) ? 'checked' : ''}/><span>${escapeHtml(permission)}</span></label>`).join('') || '<small>这个 App 未申请系统权限。</small>'}</div></div><div class="flow-actions"><button type="button" data-export-custom-app="${escapeHtml(app.id)}">导出原始包</button><button type="button" data-uninstall-custom-app="${escapeHtml(app.id)}">卸载</button><button class="primary-action" type="button" data-save-custom-app="${escapeHtml(app.id)}">保存管理项</button><button type="button" data-close-custom-app-manager>返回</button></div></section>`;
+  }
+  return `<section class="custom-app-builder-card"><div class="section-heading"><span>开发者扩展</span><h2>自定义 App</h2><p>导入 `.lovephone-app.zip`，安装后会直接出现在手机桌面，也会一并导出到本地 HTML 小手机。</p></div><div class="flow-actions"><label class="primary-action file-action">导入 App 包<input type="file" accept=".zip,.lovephone-app.zip,application/zip" data-custom-app-file hidden /></label><button type="button" data-download-example-custom-app>下载示例 App 包</button></div>${apps.length ? `<div class="companion-list app-picker-list">${apps.map(app => `<div class="companion-row app-picker-row"><span class="companion-copy"><strong>${escapeHtml(app.name)}</strong><small>${escapeHtml(app.manifest?.version || '')} · ${app.enabled === false ? '已禁用' : '已启用'}</small></span><div class="app-row-actions"><label class="feature-switch"><input type="checkbox" data-toggle-custom-app="${escapeHtml(app.id)}" ${app.enabled !== false ? 'checked' : ''}/><span class="feature-switch-track"></span></label><button type="button" data-manage-custom-app="${escapeHtml(app.id)}">管理</button></div></div>`).join('')}</div>` : '<p class="empty-state">还没有安装自定义 App。</p>'}</section>`;
+}
+
+function renderAppList(config, runtimeCapabilities = {}, uiState = {}) {
   const assistant = config.aiAssistant || {};
   return `
     <section class="panel-section">
@@ -210,6 +226,7 @@ function renderAppList(config, runtimeCapabilities = {}) {
           </div>
         </div>
       </div>
+      ${renderCustomAppArea(uiState)}
       <div class="flow-actions">
         <button class="primary-action" type="button" data-next-step="appearance">下一步：美化</button>
       </div>
@@ -430,10 +447,30 @@ export function renderAppSelectionPanel(config, uiState = {}) {
   if (uiState.appConfigId && !(uiState.appConfigId === 'music' && uiState.runtimeCapabilities?.experimentalMusic === false)) {
     return renderAppSettings(config, uiState.appConfigId, uiState);
   }
-  return renderAppList(config, uiState.runtimeCapabilities);
+  return renderAppList(config, uiState.runtimeCapabilities, uiState);
 }
 
 export function bindAppSelectionPanel(root, handlers) {
+  root.querySelector('[data-custom-app-file]')?.addEventListener('change', event => {
+    const file = event.currentTarget.files?.[0];
+    if (file) handlers.inspectCustomApp?.(file);
+  });
+  root.querySelector('[data-cancel-custom-app]')?.addEventListener('click', () => handlers.cancelCustomAppImport?.());
+  root.querySelector('[data-install-custom-app]')?.addEventListener('click', () => handlers.installCustomApp?.());
+  root.querySelector('[data-download-example-custom-app]')?.addEventListener('click', () => handlers.downloadExampleCustomApp?.());
+  root.querySelectorAll('[data-manage-custom-app]').forEach(button => button.addEventListener('click', () => handlers.openCustomAppManager?.(button.dataset.manageCustomApp)));
+  root.querySelectorAll('[data-toggle-custom-app]').forEach(input => input.addEventListener('change', () => handlers.toggleCustomApp?.(input.dataset.toggleCustomApp, input.checked)));
+  root.querySelector('[data-close-custom-app-manager]')?.addEventListener('click', () => handlers.closeCustomAppManager?.());
+  root.querySelector('[data-save-custom-app]')?.addEventListener('click', async event => {
+    const id = event.currentTarget.dataset.saveCustomApp;
+    await handlers.renameCustomApp?.(id, root.querySelector('[data-custom-app-name]')?.value);
+    const permissions = [...root.querySelectorAll('[data-custom-app-permission]:checked')].map(input => input.value);
+    await handlers.setCustomAppPermissions?.(id, permissions);
+    const file = root.querySelector('[data-custom-app-icon]')?.files?.[0];
+    if (file) { const reader = new FileReader(); reader.onload = () => handlers.updateCustomAppIcon?.(id, String(reader.result || '')); reader.readAsDataURL(file); }
+  });
+  root.querySelector('[data-uninstall-custom-app]')?.addEventListener('click', event => handlers.removeCustomApp?.(event.currentTarget.dataset.uninstallCustomApp));
+  root.querySelector('[data-export-custom-app]')?.addEventListener('click', event => handlers.exportCustomApp?.(event.currentTarget.dataset.exportCustomApp));
   root.querySelectorAll('[data-component]').forEach(input => {
     input.addEventListener('change', () => {
       handlers.setAppEnabled(input.dataset.component, input.checked);

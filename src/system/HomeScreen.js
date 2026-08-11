@@ -348,7 +348,7 @@ function renderNotificationCenter(config, osState) {
 }
 
 export function renderHomeScreen(config, osState) {
-  const apps = getEnabledApps(config, osState.runtimeCapabilities);
+  const apps = getEnabledApps(config, osState.runtimeCapabilities, osState.customApps);
   const dockApps = apps.filter(app => app.dock).slice(0, 4);
   const notificationCount = collectPhoneNotifications(config).length;
 

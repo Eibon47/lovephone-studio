@@ -15,8 +15,10 @@ test('standalone HTML export embeds the phone configuration and starts in phone 
   }, 'phone-test-id');
 
   assert.match(strFromU8(files['index.html']), /lovephone\.config\.js/);
+  assert.match(strFromU8(files['index.html']), /lovephone\.custom-apps\.js/);
   assert.match(strFromU8(files['lovephone.config.js']), /phone-test-id/);
   assert.match(strFromU8(files['lovephone.config.js']), /小满的本地小手机/);
   assert.match(strFromU8(files['sw.js']), /lovephone\.config\.js/);
+  assert.match(strFromU8(files['lovephone.custom-apps.js']), /__LOVE_PHONE_EXPORT_APPS__/);
   assert.match(strFromU8(files['README-本地小手机.md']), /纯 HTML 小手机/);
 });

@@ -22,6 +22,7 @@ export function getAppLook(config, appId) {
 }
 
 export function getAppIcon(config, app) {
+  if (app.iconUrl && /^data:image\//i.test(app.iconUrl)) return app.iconUrl;
   const customization = config.theme?.customization;
   const customIcon = getAppLook(config, app.id).icon;
   const uploaded = safeUploadedImage(customIcon.value);

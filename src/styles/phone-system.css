@@ -6138,3 +6138,13 @@
   background-repeat: no-repeat !important;
   text-shadow: none !important;
 }
+
+.custom-app-screen { display:flex; flex-direction:column; overflow:hidden; }
+.custom-app-frame { width:100%; flex:1; border:0; background:#fff; }
+.custom-app-error { margin:24px; color:#b65b4a; font-size:13px; line-height:1.6; }
+.custom-app-settings-row { gap:8px; }
+.custom-app-settings-row button { border:0; background:transparent; color:#b65b4a; font:inherit; font-size:11px; }
+.custom-app-settings-item details { padding:0 13px 10px; font-size:11px; color:#53665b; }
+.custom-app-settings-item summary { cursor:pointer; }
+.custom-app-permission-list { display:grid; gap:6px; margin-top:8px; }
+.custom-app-permission-list label { display:flex; align-items:center; gap:6px; }

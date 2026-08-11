@@ -8,6 +8,7 @@ import { DiaryApp } from '../apps/DiaryApp.js?v=app-config-83';
 import { AnniversaryApp } from '../apps/AnniversaryApp.js?v=app-config-83';
 import { GoodnightApp } from '../apps/GoodnightApp.js?v=app-config-83';
 import { getPath } from './html.js?v=app-config-13';
+import { CustomAppRuntime, customAppIcon } from './CustomAppRuntime.js';
 
 export const APP_REGISTRY = [
   {
@@ -86,10 +87,29 @@ export function isAppEnabled(app, config, runtimeCapabilities = {}) {
   return false;
 }
 
-export function getEnabledApps(config, runtimeCapabilities = {}) {
-  return APP_REGISTRY.filter(app => isAppEnabled(app, config, runtimeCapabilities));
+export function customAppRegistryItems(customApps = []) {
+  return (Array.isArray(customApps) ? customApps : [])
+    .filter(app => app && app.enabled !== false && app.id && app.manifest)
+    .map(app => ({
+      id: `custom-${app.id}`,
+      customAppId: app.id,
+      name: app.name || app.manifest.name || '自定义 App',
+      icon: 'settings',
+      iconUrl: customAppIcon(app),
+      enabled: true,
+      dock: false,
+      component: CustomAppRuntime
+    }));
 }
 
-export function getAppById(appId) {
-  return APP_REGISTRY.find(app => app.id === appId);
+export function getEnabledApps(config, runtimeCapabilities = {}, customApps = []) {
+  return [
+    ...APP_REGISTRY.filter(app => isAppEnabled(app, config, runtimeCapabilities)),
+    ...customAppRegistryItems(customApps)
+  ];
+}
+
+export function getAppById(appId, customApps = []) {
+  return APP_REGISTRY.find(app => app.id === appId)
+    || customAppRegistryItems(customApps).find(app => app.id === appId);
 }

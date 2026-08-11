@@ -2,7 +2,7 @@ import { getAppById, isAppEnabled } from './appRegistry.js?v=app-config-96';
 import { PlaceholderApp } from '../apps/PlaceholderApp.js?v=app-config-16';
 
 export function renderAppRouter(config, osState, handlers) {
-  const app = getAppById(osState.currentApp);
+  const app = getAppById(osState.currentApp, osState.customApps);
   if (!app || !isAppEnabled(app, config, osState.runtimeCapabilities)) {
     return PlaceholderApp.render({
       id: 'missing',
@@ -15,7 +15,7 @@ export function renderAppRouter(config, osState, handlers) {
 }
 
 export function bindAppRouter(container, config, osState, handlers) {
-  const app = getAppById(osState.currentApp);
+  const app = getAppById(osState.currentApp, osState.customApps);
   const component = app?.component || PlaceholderApp;
   component.bind?.(container, config, handlers, osState);
 }

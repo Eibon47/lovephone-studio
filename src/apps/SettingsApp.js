@@ -77,6 +77,13 @@ function settingsGroup(icon, title, subtitle, content, className = '') {
   `;
 }
 
+function renderCustomAppSettings(osState = {}) {
+  const apps = osState.customApps || [];
+  return settingsGroup('▦', '自定义 App 管理', apps.length ? `已安装 ${apps.length} 个自定义 App` : '尚未安装自定义 App', apps.length
+    ? apps.map(app => `<div class="custom-app-settings-item"><div class="settings-control-row custom-app-settings-row"><span><strong>${escapeHtml(app.name)}</strong><small>${escapeHtml(app.manifest?.version || '')} · ${app.enabled === false ? '已禁用' : '已启用'}</small></span><input type="checkbox" data-settings-custom-app-toggle="${escapeHtml(app.id)}" ${app.enabled !== false ? 'checked' : ''}/><i></i><button type="button" data-settings-custom-app-remove="${escapeHtml(app.id)}">卸载</button></div><details><summary>权限与联网域名</summary><div class="custom-app-permission-list">${(app.manifest?.permissions || []).map(permission => `<label><input type="checkbox" data-settings-custom-app-permission="${escapeHtml(app.id)}" value="${escapeHtml(permission)}" ${(app.permissions || []).includes(permission) ? 'checked' : ''}/>${escapeHtml(permission)}</label>`).join('') || '<small>未申请系统权限</small>'}${app.manifest?.networkOrigins?.length ? `<small>联网：${escapeHtml(app.manifest.networkOrigins.join('、'))}</small>` : ''}</div></details></div>`).join('')
+    : '<p class="settings-security-note">到工坊“功能”页导入 `.lovephone-app.zip` 后，会显示在这里和手机桌面。</p>', 'custom-apps-settings');
+}
+
 function renderAppearanceSettings(config) {
   return settingsGroup('◐', '外观与显示', '字体、手机壳和整机主色', `
     <div class="settings-choice-block">
@@ -421,6 +428,7 @@ export const SettingsApp = {
           ${renderPhoneManagement(osState)}
           ${renderRuntimeInfo(config, osState)}
           ${renderStartupHealth(osState)}
+          ${renderCustomAppSettings(osState)}
           ${config.apps.settings.themeControls ? renderAppearanceSettings(config) : ''}
           ${config.apps.settings.apiProfiles ? renderAISettings(config, osState) : ''}
           ${renderMusicSettings(config, osState)}
@@ -440,6 +448,13 @@ export const SettingsApp = {
     container.querySelector('[data-startup-health-check]')?.addEventListener('click', () => {
       handlers.checkStartupHealth?.();
     });
+    container.querySelectorAll('[data-settings-custom-app-toggle]').forEach(input => input.addEventListener('change', () => handlers.toggleCustomApp?.(input.dataset.settingsCustomAppToggle, input.checked)));
+    container.querySelectorAll('[data-settings-custom-app-remove]').forEach(button => button.addEventListener('click', () => handlers.removeCustomApp?.(button.dataset.settingsCustomAppRemove)));
+    container.querySelectorAll('[data-settings-custom-app-permission]').forEach(input => input.addEventListener('change', () => {
+      const id = input.dataset.settingsCustomAppPermission;
+      const permissions = [...container.querySelectorAll(`[data-settings-custom-app-permission="${id}"]:checked`)].map(item => item.value);
+      handlers.setCustomAppPermissions?.(id, permissions);
+    }));
 
     container.querySelector('[data-weather-search]')?.addEventListener('click', async event => {
       const button = event.currentTarget;

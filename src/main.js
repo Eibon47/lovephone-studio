@@ -71,6 +71,13 @@ import {
   downloadStandalonePhoneArchive
 } from './services/standalonePhoneExportService.js';
 import { getCustomizationStore } from './storage/customizationStore.js';
+import { getCustomAppStore } from './storage/customAppStore.js';
+import {
+  appPackageFileName,
+  createExampleCustomAppPackage,
+  downloadCustomAppPackage,
+  inspectCustomAppPackage
+} from './services/customAppPackageService.js';
 
 const app = document.getElementById('app');
 const exportedPhone = globalThis.__LOVE_PHONE_EXPORT__;
@@ -100,6 +107,19 @@ async function loadRuntimeCapabilities() {
 }
 
 const runtimeCapabilities = await loadRuntimeCapabilities();
+const customAppStore = getCustomAppStore();
+for (const bundle of globalThis.__LOVE_PHONE_EXPORT_APPS__?.apps || []) {
+  try {
+    if (!(await customAppStore.getApp(bundle.id))) {
+      const bytes = Uint8Array.from(atob(bundle.archive), value => value.charCodeAt(0));
+      const inspected = await inspectCustomAppPackage(bytes);
+      await customAppStore.install(inspected, { permissions: bundle.permissions || inspected.manifest.permissions });
+    }
+  } catch {
+    // A damaged optional custom App must never prevent the exported phone from opening.
+  }
+}
+const initialCustomApps = await customAppStore.listApps().catch(() => []);
 
 const state = {
   config: await loadConfig({
@@ -114,7 +134,8 @@ const state = {
     selectedCharacterId: null,
     chatView: 'list',
     chatCharacterId: null,
-    runtimeCapabilities
+    runtimeCapabilities,
+    customApps: initialCustomApps
   },
   ui: {
     statusMessage: '已加载上次的小手机配置。',
@@ -138,6 +159,8 @@ const state = {
     companionAppearancePreview: 'top',
     customImportPreview: null,
     customStatus: '',
+    customAppImportPreview: null,
+    customAppManagerId: null,
     aiAssistant: {
       open: false,
       isSending: false,
@@ -150,6 +173,18 @@ const state = {
     storageStatus: getStorageStatusSnapshot()
   }
 };
+
+// The package archive and its private data live in IndexedDB. The config only
+// keeps desktop-facing metadata so old configurations remain compatible.
+state.config.customApps = initialCustomApps.map(record => ({
+  id: record.id,
+  name: record.name,
+  iconOverride: record.iconOverride || '',
+  enabled: record.enabled !== false,
+  version: record.manifest?.version || '',
+  permissions: [...(record.permissions || [])],
+  networkOrigins: [...(record.manifest?.networkOrigins || [])]
+}));
 
 function chatPreviewForCustomizationPath(path) {
   const value = String(path || '');
@@ -344,6 +379,94 @@ function updatePhoneState(patch) {
   render({ keepPhone: true });
 }
 
+function customAppMetadata(record) {
+  return {
+    id: record.id,
+    name: record.name,
+    iconOverride: record.iconOverride || '',
+    enabled: record.enabled !== false,
+    version: record.manifest?.version || '',
+    permissions: [...(record.permissions || [])],
+    networkOrigins: [...(record.manifest?.networkOrigins || [])]
+  };
+}
+
+async function refreshCustomApps() {
+  state.phone.customApps = await customAppStore.listApps();
+  state.config.customApps = state.phone.customApps.map(customAppMetadata);
+}
+
+function customAppPermission(record, permission) {
+  if (!(record?.permissions || []).includes(permission)) {
+    throw new Error(`该 App 没有“${permission}”权限，请到设置中的自定义 App 管理里授权。`);
+  }
+}
+
+async function handleCustomAppRequest(appId, method, args = {}) {
+  const record = (state.phone.customApps || []).find(item => item.id === appId);
+  if (!record || record.enabled === false) throw new Error('这个 App 已被禁用或卸载。');
+  if (method.startsWith('storage.')) {
+    customAppPermission(record, 'storage');
+    const key = String(args.key || '').trim();
+    if (!key || key.length > 120) throw new Error('本地数据的键名不合法。');
+    if (method === 'storage.get') return customAppStore.getData(appId, key);
+    if (method === 'storage.set') return customAppStore.setData(appId, key, args.value);
+    if (method === 'storage.delete') return customAppStore.deleteData(appId, key);
+  }
+  if (method === 'data.read') {
+    const scope = String(args.scope || '');
+    const maps = {
+      character: ['character.read', () => ({ ...state.config.character, aiProfiles: undefined })],
+      chat: ['chat.read', () => state.config.apps.chat?.messages || []],
+      memory: ['memory.read', () => state.config.apps.memory?.entries || []],
+      diary: ['diary.read', () => state.config.apps.diary?.entries || []],
+      media: ['media.read', () => ({ musicEnabled: Boolean(state.config.apps.music?.enabled) })]
+    };
+    const entry = maps[scope];
+    if (!entry) throw new Error('不支持读取这类系统数据。');
+    customAppPermission(record, entry[0]);
+    return structuredClone(entry[1]());
+  }
+  if (method === 'network.fetch') {
+    customAppPermission(record, 'network');
+    let url;
+    try { url = new URL(String(args.url || '')); } catch { throw new Error('联网地址无效。'); }
+    if (!(record.manifest?.networkOrigins || []).includes(url.origin)) throw new Error('该地址不在安装时允许的联网域名中。');
+    const response = await fetch(url, {
+      method: ['GET', 'POST'].includes(String(args.options?.method || 'GET').toUpperCase()) ? args.options.method : 'GET',
+      headers: args.options?.headers && typeof args.options.headers === 'object' ? args.options.headers : undefined,
+      body: args.options?.body ? JSON.stringify(args.options.body) : undefined
+    });
+    const text = (await response.text()).slice(0, 512 * 1024);
+    let body; try { body = JSON.parse(text); } catch { body = text; }
+    return { ok: response.ok, status: response.status, body };
+  }
+  if (method === 'notification') {
+    customAppPermission(record, 'notifications');
+    if (!('Notification' in window)) throw new Error('当前设备不支持系统通知。');
+    const status = await Notification.requestPermission();
+    if (status !== 'granted') throw new Error('系统通知未获允许。');
+    new Notification(record.name, { body: String(args.message || '').slice(0, 120) });
+    return true;
+  }
+  if (method === 'system.openApp') {
+    customAppPermission(record, 'system.openApp');
+    openPhoneApp(String(args.id || 'home')); return true;
+  }
+  if (method === 'desktop.home') {
+    customAppPermission(record, 'desktop');
+    openPhoneApp('home'); return true;
+  }
+  if (method === 'navigate') {
+    const page = String(args.page || '');
+    if (!(record.manifest?.pages || []).includes(page)) throw new Error('这个页面不在 App 清单中。');
+    state.phone.customAppPages = { ...(state.phone.customAppPages || {}), [appId]: page };
+    render({ keepPhone: true });
+    return true;
+  }
+  throw new Error('这个 App 请求了尚未支持的系统能力。');
+}
+
 function confirmConfigImport(config) {
   const summary = summarizeImportedConfig(config);
   return window.confirm(
@@ -503,12 +626,13 @@ function getPanelHtml() {
   if (state.activeStep === 'save') return renderPreviewActions(state.config, state.ui);
   return renderAppSelectionPanel(state.config, {
     ...state.ui,
-    runtimeCapabilities
+    runtimeCapabilities,
+    customApps: state.phone.customApps
   });
 }
 
 function openPhoneApp(appId) {
-  const available = getEnabledApps(state.config, runtimeCapabilities)
+  const available = getEnabledApps(state.config, runtimeCapabilities, state.phone.customApps)
     .some(appItem => appItem.id === appId);
   if (!available) {
     state.phone.currentApp = 'home';
@@ -664,6 +788,42 @@ function bindPanel(root) {
     getConfig: () => state.config,
     updatePath,
     updatePhoneState,
+    inspectCustomApp: async file => {
+      try {
+        state.ui.customAppImportPreview = await inspectCustomAppPackage(file);
+        state.ui.statusMessage = '已完成 App 包预检，请确认权限后安装。';
+      } catch (error) {
+        state.ui.customAppImportPreview = null;
+        state.ui.statusMessage = error.message || 'App 包无法导入。';
+      }
+      render();
+    },
+    cancelCustomAppImport: () => { state.ui.customAppImportPreview = null; render(); },
+    installCustomApp: async () => {
+      const preview = state.ui.customAppImportPreview;
+      if (!preview) return;
+      try {
+        const existing = await customAppStore.getApp(preview.manifest.id);
+        const changedPermissions = existing && JSON.stringify(existing.manifest.permissions || []) !== JSON.stringify(preview.manifest.permissions || []);
+        const changedOrigins = existing && JSON.stringify(existing.manifest.networkOrigins || []) !== JSON.stringify(preview.manifest.networkOrigins || []);
+        if (existing && (changedPermissions || changedOrigins) && !window.confirm('这个更新请求了不同的权限或联网域名。确认后才会保留原数据并更新 App。')) return;
+        if (existing && !window.confirm('检测到相同 App ID。更新会保留这个 App 的独立数据，是否继续？')) return;
+        await customAppStore.install(preview, { replace: Boolean(existing), permissions: preview.manifest.permissions });
+        await refreshCustomApps();
+        persist(existing ? '自定义 App 已更新，原有独立数据已保留。' : '自定义 App 已安装并加入桌面。');
+        state.ui.customAppImportPreview = null;
+      } catch (error) { state.ui.statusMessage = error.message || '安装自定义 App 失败。'; }
+      render();
+    },
+    openCustomAppManager: id => { state.ui.customAppManagerId = id; render(); },
+    closeCustomAppManager: () => { state.ui.customAppManagerId = null; render(); },
+    toggleCustomApp: async (id, enabled) => { await customAppStore.update(id, { enabled }); await refreshCustomApps(); persist(enabled ? '自定义 App 已启用。' : '自定义 App 已禁用。'); render(); },
+    renameCustomApp: async (id, name) => { await customAppStore.update(id, { name: String(name || '').trim().slice(0, 60) || '未命名 App' }); await refreshCustomApps(); persist('自定义 App 名称已保存。'); render(); },
+    updateCustomAppIcon: async (id, iconOverride) => { await customAppStore.update(id, { iconOverride }); await refreshCustomApps(); persist('自定义 App 图标已保存。'); render(); },
+    setCustomAppPermissions: async (id, permissions) => { await customAppStore.update(id, { permissions }); await refreshCustomApps(); persist('自定义 App 权限已更新。'); render(); },
+    removeCustomApp: async id => { if (!window.confirm('卸载后会删除这个 App 的文件、设置和独立数据，无法恢复。确定卸载吗？')) return; await customAppStore.remove(id); await refreshCustomApps(); state.ui.customAppManagerId = null; persist('自定义 App 已卸载，独立数据已清理。'); render(); },
+    exportCustomApp: async id => { const record = await customAppStore.getApp(id); if (record) downloadCustomAppPackage(record.archive, appPackageFileName(record)); },
+    downloadExampleCustomApp: () => downloadCustomAppPackage(createExampleCustomAppPackage(), 'hello-companion.lovephone-app.zip'),
     setAiAssistantEnabled: enabled => {
       state.config.aiAssistant.enabled = Boolean(enabled);
       if (!enabled) state.ui.aiAssistant.open = false;
@@ -1343,6 +1503,20 @@ function createPhoneHandlers() {
     getConfig: () => state.config,
     updatePath,
     updatePhoneState,
+    customAppRequest: handleCustomAppRequest,
+    manageCustomApps: () => {
+      if (phoneMode) {
+        state.phone.currentApp = 'settings';
+        render({ keepPhone: true });
+      } else {
+        state.activeStep = 'apps';
+        state.ui.customAppManagerId = state.phone.customApps?.[0]?.id || null;
+        render();
+      }
+    },
+    toggleCustomApp: async (id, enabled) => { await customAppStore.update(id, { enabled }); await refreshCustomApps(); persist(enabled ? '自定义 App 已启用。' : '自定义 App 已禁用。'); render({ keepPhone: true }); },
+    setCustomAppPermissions: async (id, permissions) => { await customAppStore.update(id, { permissions }); await refreshCustomApps(); persist('自定义 App 权限已更新。'); render({ keepPhone: true }); },
+    removeCustomApp: async id => { if (!window.confirm('卸载会删除这个 App 的所有独立数据，确定吗？')) return; await customAppStore.remove(id); await refreshCustomApps(); persist('自定义 App 已卸载。'); render({ keepPhone: true }); },
     selectCharacter,
     deleteCharacter,
     moveCharacter,
@@ -1523,7 +1697,7 @@ function render(options = {}) {
           <div id="lovePhoneOS"></div>
         </aside>
       </main>
-      ${renderCustomizationDrawer(state.config, state.ui, getEnabledApps(state.config, runtimeCapabilities))}
+      ${renderCustomizationDrawer(state.config, state.ui, getEnabledApps(state.config, runtimeCapabilities, state.phone.customApps))}
       <div id="globalStorageNotice" class="global-storage-notice" role="alert" hidden></div>
     `;
 

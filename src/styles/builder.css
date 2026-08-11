@@ -2392,3 +2392,10 @@ body:has(.customization-drawer) {
   font-size: 12px;
   line-height: 1.45;
 }
+
+.custom-app-builder-card { margin-top:16px; padding:16px; border:1px solid rgba(86,117,93,.2); border-radius:8px; background:#fffef8; }
+.custom-app-builder-card .section-heading { margin-bottom:12px; }
+.custom-app-summary { display:grid; grid-template-columns:90px 1fr; gap:8px 12px; margin:0 0 12px; font-size:12px; }
+.custom-app-summary dt { color:#58715d; }.custom-app-summary dd { margin:0; color:#33463a; overflow-wrap:anywhere; }
+.file-action { display:inline-flex; align-items:center; cursor:pointer; }
+.empty-state { color:#718075; font-size:13px; }

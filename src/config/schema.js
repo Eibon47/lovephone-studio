@@ -180,6 +180,21 @@ function normalizeAiAssistant(source = {}) {
   };
 }
 
+function normalizeCustomApps(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter(item => item && typeof item === 'object')
+    .slice(0, 30)
+    .map(item => ({
+      id: safeCharacterId(item.id, ''),
+      name: String(item.name || '').trim().slice(0, 60),
+      iconOverride: typeof item.iconOverride === 'string' && item.iconOverride.startsWith('data:image/') ? item.iconOverride : '',
+      enabled: item.enabled !== false,
+      version: String(item.version || '').trim().slice(0, 40),
+      permissions: Array.isArray(item.permissions) ? item.permissions.map(value => String(value)).slice(0, 20) : [],
+      networkOrigins: Array.isArray(item.networkOrigins) ? item.networkOrigins.map(value => String(value)).slice(0, 20) : []
+    })).filter(item => item.id);
+}
+
 export function normalizeConfig(input) {
   const base = cloneConfig(defaultConfig);
   const source = input && typeof input === 'object' ? input : {};
@@ -197,6 +212,7 @@ export function normalizeConfig(input) {
       }
     },
     characters: normalizeCharacterList(source.characters),
+    customApps: normalizeCustomApps(source.customApps),
     theme: mergeTheme(base.theme, source.theme || {}),
     components: { ...base.components, ...(source.components || {}) },
     apps: { ...base.apps },

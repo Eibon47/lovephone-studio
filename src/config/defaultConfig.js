@@ -34,6 +34,7 @@ export const defaultConfig = {
     }
   },
   characters: [],
+  customApps: [],
   theme: {
     id: 'basic',
     fontStyle: 'wenkai',
