@@ -61,11 +61,11 @@ AI 桥接默认使用 `5189` 端口。旧的 MPV / CLI 音乐桥接仅保留为�
 
 ```text
 http://127.0.0.1:5177/?mode=phone
+```
 
 ### 导出纯 HTML 小手机
 
 “完成”页的“下载本地 HTML”会生成一个独立 ZIP：其中含 `index.html`、运行代码、素材和当前小手机配置。解压后可直接查看，也可以把整个文件夹部署到 Netlify、GitHub Pages、Vercel 或任意静态网站空间。导出文件不含 API Key、网易云登录 Cookie 或本地导入的音频文件；AI、在线音乐和天气仍需由使用者自行配置可访问的服务。
-```
 
 Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
 
@@ -121,6 +121,23 @@ API Key 由本机 AI 桥接服务使用 Windows DPAPI 按当前 Windows 用户�
 开发者模式允许填写限定作用域 CSS，但不运行任意 JavaScript 或 HTML。CSS 不能使用外部网址、`@import`、远程字体或可执行表达式，只能影响整台手机或当前 App。自定义小组件只能读取白名单数据并调用白名单动作，不能读取 API Key。
 
 主题包仅接受 JSON、CSS、PNG、JPG、WebP、GIF、WOFF 和 WOFF2。导入前会检查 ZIP 路径、类型、数量、压缩前后体积、外部资源、CSS 和 SHA-256 文件哈希；检查完成后由用户确认是否应用。导入的主题包与素材保存在独立 IndexedDB 中，不与聊天和手机配置备份混在一起。
+
+## 自定义 App 开发
+
+在“功能 → 自定义 App”中可以导入 `.lovephone-app.zip` 包，为小手机安装自己的 App。安装前会展示权限与联网域名；安装后可以在“设置 → 自定义 App 管理”中随时收回权限、禁用或卸载。
+
+- [开发者 API 与安装包格式](docs/CUSTOM_APP_DEVELOPER_GUIDE.md)
+- [可直接修改的示例 App 源码](examples/hello-companion/)
+
+自定义 App 运行在沙箱中，不能直接读取 LovePhone 页面、API Key 或其他 App 的数据；但它获得你授权的聊天记录、角色资料、联网或 AI 能力后，仍可能处理对应内容并消耗你的模型额度。请只安装可信来源的 App 包，并在安装页认真核对权限和联网域名。
+
+## 社区与支持
+
+- 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- 提问与反馈：[SUPPORT.md](SUPPORT.md)
+- 贡献代码：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 安全漏洞：[SECURITY.md](SECURITY.md)
+- 版本记录：[CHANGELOG.md](CHANGELOG.md)
 
 ## 数据保存
 

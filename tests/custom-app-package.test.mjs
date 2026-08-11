@@ -25,6 +25,21 @@ test('custom App package validates and exposes a useful installation summary', a
   assert.deepEqual(result.manifest.permissions, ['storage', 'character.read']);
 });
 
+test('custom App package safely normalizes Windows ZIP separators', async () => {
+  const manifest = {
+    format: 'lovephone-app', formatVersion: 1, id: 'windows-tool', name: 'Windows tool', version: '1.0.0',
+    entry: 'app.html', pages: ['app.html'], styles: ['styles/app.css'], scripts: ['scripts/app.js'], permissions: []
+  };
+  const result = await inspectCustomAppPackage(zipSync({
+    'manifest.json': strToU8(JSON.stringify(manifest)),
+    'app.html': strToU8('<main>Hello</main>'),
+    'styles\\app.css': strToU8('body{color:#234;}'),
+    'scripts\\app.js': strToU8('console.log("hello")')
+  }));
+  assert.deepEqual(result.manifest.styles, ['styles/app.css']);
+  assert.ok(result.files['scripts/app.js']);
+});
+
 test('custom App package rejects traversal, missing entry and remote resources', async () => {
   await assert.rejects(() => inspectCustomAppPackage(archive({ files: { '../escape.js': strToU8('x') } })), error => error.code === 'FORBIDDEN_FILE');
   await assert.rejects(() => inspectCustomAppPackage(archive({ manifest: { entry: 'pages/missing.html', pages: ['pages/missing.html'] } })), error => error.code === 'MISSING_FILE');

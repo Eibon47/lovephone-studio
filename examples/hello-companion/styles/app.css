@@ -1,0 +1,29 @@
+body {
+  margin: 0;
+  background: #f7f6ee;
+  color: #24352c;
+  font: 16px system-ui, sans-serif;
+}
+
+.app-shell {
+  padding: 28px;
+}
+
+.eyebrow {
+  color: #7aa98e;
+  font-size: 12px;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 8px 0;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  background: #7fb59a;
+  color: white;
+  padding: 11px 14px;
+  font: inherit;
+}

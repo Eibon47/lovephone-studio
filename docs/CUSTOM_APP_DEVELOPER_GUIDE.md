@@ -58,6 +58,14 @@ const result = await LovePhone.network.fetch('https://api.example.com/hello');
 
 网络请求必须使用 `LovePhone.network.fetch`，且目标 HTTPS 域名必须写入 `networkOrigins` 并在安装时获用户授权。目标服务仍需自行允许浏览器跨域请求。AI Key、登录 Cookie 和本地音频不应写进安装包。
 
+## 权限与安全边界
+
+安装页会把权限和联网域名逐项展示给用户。请只声明真正需要的最小权限，并在 App 自己的界面中说明这些数据会怎样使用。不要把角色资料、聊天记录、记忆或日记内容发送到未在 `networkOrigins` 中声明的服务。
+
+自定义 App 运行在沙箱中：不能直接访问父页面、浏览器内的 AI Key、网易云登录 Cookie，或其他 App 的私有存储。`storage` 也仅属于当前 App ID。任何未声明或被用户撤销的权限调用都会返回中文错误；不要尝试通过 `iframe`、远程脚本或动态加载外部资源绕过限制，这类包会被拒绝导入或按安全问题处理。
+
+使用 `ai.chat` 时，只有请求文本和可选系统提示会交给 LovePhone 的 AI 网关，App 代码不会获得 API Key。请把调用时机做得清楚、可预期，避免在后台无提示地消耗用户模型额度。
+
 ## 导出
 
 “下载本地 HTML 小手机”会包含已安装的 App 包和素材。首次打开导出成品时会恢复 App；每个成品仍拥有自己的 IndexedDB 数据空间。

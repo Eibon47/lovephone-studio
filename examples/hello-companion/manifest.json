@@ -1,0 +1,13 @@
+{
+  "format": "lovephone-app",
+  "formatVersion": 1,
+  "id": "hello-companion",
+  "name": "小小问候",
+  "version": "1.0.0",
+  "description": "一个可离线运行的 LovePhone 自定义 App 示例。",
+  "entry": "app.html",
+  "pages": ["app.html"],
+  "styles": ["styles/app.css"],
+  "scripts": ["scripts/app.js"],
+  "permissions": ["storage", "character.read"]
+}

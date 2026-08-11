@@ -99,6 +99,16 @@ function validateFiles(files, archiveBytes) {
   return totalBytes;
 }
 
+function normalizeArchiveFiles(files) {
+  const normalized = {};
+  Object.entries(files).forEach(([rawPath, bytes]) => {
+    const path = rawPath.replace(/\\/g, '/');
+    if (normalized[path]) throw packageError(`App 包包含重复文件：${path}`, 'DUPLICATE_FILE');
+    normalized[path] = bytes;
+  });
+  return normalized;
+}
+
 function readJson(bytes, label) {
   try { return JSON.parse(strFromU8(bytes)); } catch { throw packageError(`${label} 不是有效 JSON。`, 'INVALID_MANIFEST'); }
 }
@@ -122,7 +132,8 @@ export async function inspectCustomAppPackage(input) {
   try {
     files = unzipSync(archive, {
       filter(entry) {
-        if (entry.name.includes('..') || entry.name.startsWith('/') || entry.name.includes('\\') || !SAFE_FILE.test(entry.name)) {
+        const path = entry.name.replace(/\\/g, '/');
+        if (path.includes('..') || path.startsWith('/') || !SAFE_FILE.test(path)) {
           throw packageError(`不允许的文件或路径：${entry.name}`, 'FORBIDDEN_FILE');
         }
         return true;
@@ -132,6 +143,7 @@ export async function inspectCustomAppPackage(input) {
     if (error?.code) throw error;
     throw packageError('无法读取这个 ZIP App 包。');
   }
+  files = normalizeArchiveFiles(files);
   const totalBytes = validateFiles(files, archive.byteLength);
   checkNoExternalResources(files);
   const manifest = parseManifest(readJson(files['manifest.json'], 'manifest.json'), files);
