@@ -36,3 +36,8 @@ test('custom App package only accepts declared HTTPS network origins', async () 
   assert.deepEqual(result.manifest.networkOrigins, ['https://api.example.com']);
   await assert.rejects(() => inspectCustomAppPackage(archive({ manifest: { permissions: ['network'], networkOrigins: ['http://api.example.com'] } })), /HTTPS/);
 });
+
+test('custom App package accepts the configured LovePhone AI bridge permission', async () => {
+  const result = await inspectCustomAppPackage(archive({ manifest: { permissions: ['storage', 'ai.chat'] } }));
+  assert.deepEqual(result.manifest.permissions, ['storage', 'ai.chat']);
+});

@@ -41,6 +41,7 @@ function documentFor(record, pagePath = '') {
       info: ${payload},
       storage: { get: key => __lpRequest('storage.get', { key }), set: (key, value) => __lpRequest('storage.set', { key, value }), delete: key => __lpRequest('storage.delete', { key }) },
       data: { read: scope => __lpRequest('data.read', { scope }) },
+      ai: { chat: (message, options = {}) => __lpRequest('ai.chat', { message, ...options }) },
       network: { fetch: (url, options = {}) => __lpRequest('network.fetch', { url, options }) },
       notification: message => __lpRequest('notification', { message }),
       openApp: id => __lpRequest('system.openApp', { id }),

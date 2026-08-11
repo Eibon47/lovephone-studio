@@ -161,6 +161,7 @@ const state = {
     customStatus: '',
     customAppImportPreview: null,
     customAppManagerId: null,
+    customAppGuideOpen: false,
     aiAssistant: {
       open: false,
       isSending: false,
@@ -440,6 +441,23 @@ async function handleCustomAppRequest(appId, method, args = {}) {
     const text = (await response.text()).slice(0, 512 * 1024);
     let body; try { body = JSON.parse(text); } catch { body = text; }
     return { ok: response.ok, status: response.status, body };
+  }
+  if (method === 'ai.chat') {
+    customAppPermission(record, 'ai.chat');
+    const providerId = state.config.aiProviders?.activeId;
+    const message = String(args.message || '').trim().slice(0, 4000);
+    if (!providerId || !message) throw new Error('请先在设置中连接 AI 服务，并提供一段需要发送的话。');
+    const system = String(args.system || '你是 LovePhone 自定义 App 的助手。请只完成当前 App 的请求。').slice(0, 1800);
+    const history = Array.isArray(args.history) ? args.history.slice(-8).map(item => ({
+      role: item?.role === 'assistant' ? 'assistant' : 'user',
+      content: String(item?.content || '').slice(0, 2000)
+    })).filter(item => item.content) : [];
+    return streamAiChat(state.config, {
+      providerId,
+      profileId: providerId,
+      system,
+      messages: [...history, { role: 'user', content: message }]
+    });
   }
   if (method === 'notification') {
     customAppPermission(record, 'notifications');
@@ -788,6 +806,8 @@ function bindPanel(root) {
     getConfig: () => state.config,
     updatePath,
     updatePhoneState,
+    toggleCustomAppGuide: () => { state.ui.customAppGuideOpen = !state.ui.customAppGuideOpen; render(); },
+    setCustomAppGuideStatus: message => { state.ui.statusMessage = message; render(); },
     inspectCustomApp: async file => {
       try {
         state.ui.customAppImportPreview = await inspectCustomAppPackage(file);

@@ -2399,3 +2399,7 @@ body:has(.customization-drawer) {
 .custom-app-summary dt { color:#58715d; }.custom-app-summary dd { margin:0; color:#33463a; overflow-wrap:anywhere; }
 .file-action { display:inline-flex; align-items:center; cursor:pointer; }
 .empty-state { color:#718075; font-size:13px; }
+.custom-app-agent-guide { margin-top:12px; padding:12px; border:1px solid rgba(86,117,93,.18); border-radius:6px; background:#f4f8f1; }
+.custom-app-agent-guide strong { display:block; margin-bottom:8px; color:#385444; font-size:12px; }
+.custom-app-agent-guide textarea { width:100%; min-height:210px; resize:vertical; box-sizing:border-box; padding:10px; border:1px solid rgba(86,117,93,.22); border-radius:5px; background:#fffefa; color:#30483a; font:12px/1.55 ui-monospace,Consolas,monospace; }
+.custom-app-agent-guide a { align-self:center; color:#477a5e; font-size:12px; }

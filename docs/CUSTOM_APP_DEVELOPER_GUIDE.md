@@ -27,7 +27,7 @@ my-app.lovephone-app.zip
   "pages": ["app.html", "pages/about.html"],
   "styles": ["styles/app.css"],
   "scripts": ["scripts/app.js"],
-  "permissions": ["storage", "character.read"],
+  "permissions": ["storage", "character.read", "ai.chat"],
   "networkOrigins": ["https://api.example.com"]
 }
 ```
@@ -40,13 +40,21 @@ my-app.lovephone-app.zip
 await LovePhone.storage.set('theme', { color: '#7fb59a' });
 const theme = await LovePhone.storage.get('theme');
 const character = await LovePhone.data.read('character');
+const messages = await LovePhone.data.read('chat');
+const memories = await LovePhone.data.read('memory');
+const diaryEntries = await LovePhone.data.read('diary');
+const answer = await LovePhone.ai.chat('根据角色资料写一句问候', {
+  system: '你是一个温柔的陪伴助手。'
+});
 await LovePhone.openApp('chat');
 await LovePhone.navigate('pages/about.html');
 await LovePhone.notification('今天也要好好照顾自己。');
 const result = await LovePhone.network.fetch('https://api.example.com/hello');
 ```
 
-可申请权限：`storage`、`character.read`、`chat.read`、`memory.read`、`diary.read`、`media.read`、`notifications`、`network`、`system.openApp`、`desktop`。
+可申请权限：`storage`、`character.read`、`chat.read`、`memory.read`、`diary.read`、`media.read`、`notifications`、`network`、`ai.chat`、`system.openApp`、`desktop`。
+
+`LovePhone.ai.chat` 使用用户已经在 LovePhone「设置」中连接的全局 AI 服务商和模型。自定义 App 永远拿不到 API Key，也不能把 Key 写入安装包；用户只需要在手机设置完成一次连接即可。调用会消耗用户自己的模型额度，因此必须在 `manifest.json` 中声明 `ai.chat` 并由用户在安装时确认。
 
 网络请求必须使用 `LovePhone.network.fetch`，且目标 HTTPS 域名必须写入 `networkOrigins` 并在安装时获用户授权。目标服务仍需自行允许浏览器跨域请求。AI Key、登录 Cookie 和本地音频不应写进安装包。
 

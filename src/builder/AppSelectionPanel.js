@@ -55,6 +55,19 @@ const memoryTypes = [
   { id: 'chatSummary', label: '聊天摘要' }
 ];
 
+const CUSTOM_APP_AGENT_BRIEF = [
+  '你正在为 LovePhone Studio 编写可导入的自定义 App。',
+  '请生成一个 .lovephone-app.zip，包含 manifest.json、app.html、styles/app.css、scripts/app.js 和本地素材。',
+  'manifest 固定：format=lovephone-app，formatVersion=1，id，name，version，entry，pages，styles，scripts，permissions，networkOrigins。',
+  'App 在独立沙箱中运行，不能访问 parent、localStorage 或直接 fetch 外网。只能使用 LovePhone API。',
+  '私有数据：await LovePhone.storage.get(key) / set(key,value) / delete(key)，数据按 App ID 隔离。',
+  '系统数据：await LovePhone.data.read(character | chat | memory | diary | media)。对应权限为 character.read、chat.read、memory.read、diary.read、media.read。',
+  '已配置 AI：await LovePhone.ai.chat(message, { system, history })。需要 ai.chat 权限；AI Key 永不写入 App 包，用户在 LovePhone 设置中连接自己的服务商。',
+  '联网：await LovePhone.network.fetch(url, { method, headers, body })。需要 network 权限，HTTPS 根域名必须写入 networkOrigins，服务端必须允许浏览器跨域。',
+  '其他：LovePhone.openApp(id) 需要 system.openApp；LovePhone.navigate(page) 在 manifest.pages 内跳转；LovePhone.notification(message) 需要 notifications。',
+  '不允许远程脚本、远程样式或远程图片。所有界面资源必须放在 App 包内。'
+].join('\n');
+
 function copyFor(option) {
   return appCopy[option.key] || option;
 }
@@ -173,7 +186,7 @@ function renderCustomAppArea(uiState = {}) {
     const permissions = app.manifest?.permissions || [];
     return `<section class="custom-app-builder-card"><div class="section-heading"><span>自定义 App 管理</span><h2>${escapeHtml(app.name)}</h2><p>${escapeHtml(app.id)} · ${escapeHtml(app.manifest?.version || '')}</p></div><label class="setting-field"><span><strong>桌面名称</strong><small>只改变这台小手机中的显示名称。</small></span><input data-custom-app-name value="${escapeHtml(app.name)}" /></label><label class="setting-field"><span><strong>自定义图标</strong><small>PNG、JPG、WebP 或 GIF 图片。</small></span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-custom-app-icon /></label><div class="setting-group"><div class="setting-group-title"><strong>权限管理</strong><small>关闭后，App 对应的系统 API 会直接返回中文错误。</small></div><div class="mini-check-grid">${permissions.map(permission => `<label><input type="checkbox" data-custom-app-permission value="${escapeHtml(permission)}" ${(app.permissions || []).includes(permission) ? 'checked' : ''}/><span>${escapeHtml(permission)}</span></label>`).join('') || '<small>这个 App 未申请系统权限。</small>'}</div></div><div class="flow-actions"><button type="button" data-export-custom-app="${escapeHtml(app.id)}">导出原始包</button><button type="button" data-uninstall-custom-app="${escapeHtml(app.id)}">卸载</button><button class="primary-action" type="button" data-save-custom-app="${escapeHtml(app.id)}">保存管理项</button><button type="button" data-close-custom-app-manager>返回</button></div></section>`;
   }
-  return `<section class="custom-app-builder-card"><div class="section-heading"><span>开发者扩展</span><h2>自定义 App</h2><p>导入 .lovephone-app.zip，安装后会直接出现在手机桌面，也会一并导出到本地 HTML 小手机。</p></div><div class="flow-actions"><label class="primary-action file-action">导入 App 包<input type="file" accept=".zip,.lovephone-app.zip,application/zip" data-custom-app-file hidden /></label><button type="button" data-download-example-custom-app>下载示例 App 包</button></div>${apps.length ? `<div class="companion-list app-picker-list">${apps.map(app => `<div class="companion-row app-picker-row"><span class="companion-copy"><strong>${escapeHtml(app.name)}</strong><small>${escapeHtml(app.manifest?.version || '')} · ${app.enabled === false ? '已禁用' : '已启用'}</small></span><div class="app-row-actions"><label class="feature-switch"><input type="checkbox" data-toggle-custom-app="${escapeHtml(app.id)}" ${app.enabled !== false ? 'checked' : ''}/><span class="feature-switch-track"></span></label><button type="button" data-manage-custom-app="${escapeHtml(app.id)}">管理</button></div></div>`).join('')}</div>` : '<p class="empty-state">还没有安装自定义 App。</p>'}</section>`;
+  return `<section class="custom-app-builder-card"><div class="section-heading"><span>开发者扩展</span><h2>自定义 App</h2><p>导入 .lovephone-app.zip，安装后会直接出现在手机桌面，也会一并导出到本地 HTML 小手机。</p></div><div class="flow-actions"><label class="primary-action file-action">导入 App 包<input type="file" accept=".zip,.lovephone-app.zip,application/zip" data-custom-app-file hidden /></label><button type="button" data-download-example-custom-app>下载示例 App 包</button><button type="button" data-toggle-custom-app-guide>${uiState.customAppGuideOpen ? '收起接口说明' : '开发接口说明'}</button></div>${uiState.customAppGuideOpen ? `<div class="custom-app-agent-guide"><strong>复制下面内容给 Codex、Claude 或其他开发 Agent</strong><textarea readonly data-custom-app-agent-brief>${escapeHtml(CUSTOM_APP_AGENT_BRIEF)}</textarea><div class="flow-actions"><button class="primary-action" type="button" data-copy-custom-app-agent-brief>复制给 Agent</button><a href="./docs/CUSTOM_APP_DEVELOPER_GUIDE.md" target="_blank" rel="noopener">打开完整说明</a></div></div>` : ''}${apps.length ? `<div class="companion-list app-picker-list">${apps.map(app => `<div class="companion-row app-picker-row"><span class="companion-copy"><strong>${escapeHtml(app.name)}</strong><small>${escapeHtml(app.manifest?.version || '')} · ${app.enabled === false ? '已禁用' : '已启用'}</small></span><div class="app-row-actions"><label class="feature-switch"><input type="checkbox" data-toggle-custom-app="${escapeHtml(app.id)}" ${app.enabled !== false ? 'checked' : ''}/><span class="feature-switch-track"></span></label><button type="button" data-manage-custom-app="${escapeHtml(app.id)}">管理</button></div></div>`).join('')}</div>` : '<p class="empty-state">还没有安装自定义 App。</p>'}</section>`;
 }
 
 function renderAppList(config, runtimeCapabilities = {}, uiState = {}) {
@@ -451,6 +464,11 @@ export function renderAppSelectionPanel(config, uiState = {}) {
 }
 
 export function bindAppSelectionPanel(root, handlers) {
+  root.querySelector('[data-toggle-custom-app-guide]')?.addEventListener('click', () => handlers.toggleCustomAppGuide?.());
+  root.querySelector('[data-copy-custom-app-agent-brief]')?.addEventListener('click', async () => {
+    const value = root.querySelector('[data-custom-app-agent-brief]')?.value || '';
+    try { await navigator.clipboard.writeText(value); handlers.setCustomAppGuideStatus?.('接口说明已复制，可以直接发给开发 Agent。'); } catch { handlers.setCustomAppGuideStatus?.('复制失败，请手动选中说明文字复制。'); }
+  });
   root.querySelector('[data-custom-app-file]')?.addEventListener('change', event => {
     const file = event.currentTarget.files?.[0];
     if (file) handlers.inspectCustomApp?.(file);

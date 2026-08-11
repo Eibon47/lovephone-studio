@@ -11,7 +11,7 @@ export const CUSTOM_APP_LIMITS = Object.freeze({
 
 export const CUSTOM_APP_PERMISSIONS = Object.freeze([
   'storage', 'character.read', 'chat.read', 'memory.read', 'diary.read',
-  'media.read', 'notifications', 'network', 'system.openApp', 'desktop'
+  'media.read', 'notifications', 'network', 'ai.chat', 'system.openApp', 'desktop'
 ]);
 
 const SAFE_ID = /^[a-zA-Z][a-zA-Z0-9_-]{2,79}$/;
