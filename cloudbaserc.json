@@ -1,0 +1,15 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "xiaoye-d4ggsw4zt7bce7dba",
+  "functionRoot": "cloudbase/functions",
+  "functions": [
+    {
+      "name": "ai-gateway",
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "timeout": 60,
+      "memorySize": 256,
+      "description": "LovePhone AI 网关：用户会话内的 Key 仅用于转发模型请求"
+    }
+  ]
+}

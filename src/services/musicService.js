@@ -7,6 +7,7 @@ const SESSION_STORE = 'session';
 const SESSION_KEY = 'netease-cookie';
 const SESSION_ACCOUNT_KEY = 'netease-account';
 const NETLIFY_MUSIC_GATEWAY = '/.netlify/functions/music';
+const CLOUDBASE_MUSIC_GATEWAY = 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/music-gateway';
 
 let databasePromise = null;
 let audio = null;
@@ -72,7 +73,8 @@ export function musicBaseUrl(config) {
   if (globalThis.__LOVE_PHONE_EXPORT__?.config) return '';
   const hostname = String(globalThis.location?.hostname || '').toLowerCase();
   const secure = globalThis.location?.protocol === 'https:';
-  return secure && !['localhost', '127.0.0.1'].includes(hostname) ? NETLIFY_MUSIC_GATEWAY : '';
+  if (!secure || ['localhost', '127.0.0.1'].includes(hostname)) return '';
+  return hostname.endsWith('.netlify.app') ? NETLIFY_MUSIC_GATEWAY : CLOUDBASE_MUSIC_GATEWAY;
 }
 
 export function usesBuiltInMusicGateway(config) {

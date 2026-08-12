@@ -2,6 +2,8 @@ import { friendlyAiError } from './aiErrors.js';
 
 const LOCAL_AI_BRIDGE = 'http://127.0.0.1:5189';
 const NETLIFY_AI_GATEWAY = '/.netlify/functions/ai';
+const CLOUDBASE_AI_GATEWAY = '/api-ai';
+const CLOUDBASE_GATEWAY_ORIGIN = 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com';
 const REMOTE_PROFILE_KEY = 'lovephone-ai-session-profiles-v1';
 const sessionPromises = new Map();
 let memoryProfiles = {};
@@ -13,7 +15,10 @@ function runningLocally() {
 
 function bridgeUrl(config) {
   const configured = String(config.aiProviders?.bridgeUrl || '').trim().replace(/\/+$/, '');
-  return configured || (runningLocally() ? LOCAL_AI_BRIDGE : NETLIFY_AI_GATEWAY);
+  if (configured) return configured;
+  if (runningLocally()) return LOCAL_AI_BRIDGE;
+  const hostname = String(globalThis.location?.hostname || '').toLowerCase();
+  return hostname.endsWith('.netlify.app') ? NETLIFY_AI_GATEWAY : `${CLOUDBASE_GATEWAY_ORIGIN}${CLOUDBASE_AI_GATEWAY}`;
 }
 
 function localBridgeBase(url) {
@@ -202,6 +207,15 @@ export async function streamAiChat(config, payload, handlers = {}) {
     throw new Error(friendlyAiError(data.error || `AI 服务请求失败（${response.status}）`));
   }
   if (!response.body) throw new Error('浏览器无法读取流式回复');
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const data = await response.json().catch(() => ({}));
+    const answer = String(data.answer || '').trim();
+    if (!answer) throw new Error(friendlyAiError(data.error || '模型返回了空内容，请检查模型是否支持聊天'));
+    handlers.onDelta?.(answer, answer);
+    handlers.onDone?.({ type: 'done', text: answer, providerId: data.providerId, model: data.model });
+    return answer;
+  }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

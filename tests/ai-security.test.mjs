@@ -106,3 +106,22 @@ test('deployed AI gateway keeps the user key in the browser session and sends it
     Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: originalSessionStorage });
   }
 });
+
+test('CloudBase deployment uses the CloudBase AI gateway', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname: 'example.tcloudbaseapp.com', href: 'https://example.tcloudbaseapp.com/' } });
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const result = await getAiBridgeHealth({ aiProviders: { bridgeUrl: '' } });
+    assert.equal(result.ok, true);
+    assert.equal(calls[0].url, 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/api-ai');
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: originalLocation });
+  }
+});

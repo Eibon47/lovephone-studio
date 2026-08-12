@@ -80,6 +80,10 @@ Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
 - 音乐 App 仍然由浏览器直接调用用户填写的 HTTPS 兼容 API；网易云扫码 Cookie 仅保存在当前浏览器的音乐数据库中。
 - 本机 `npm run web` 与 Windows 桌面版仍会自动使用 `127.0.0.1:5189` 的本机桥接和 Windows DPAPI 密钥保存。
 
+## 部署到腾讯云 CloudBase
+
+项目也支持腾讯云 CloudBase 静态网站托管。网页前端上传至静态托管，AI 请求会自动转到本项目配置的 CloudBase HTTP 云函数；用户填写的 API Key 仍只在当前浏览器会话中使用，不写入腾讯云环境变量或项目配置。完整操作见 [docs/CLOUDBASE_DEPLOY.md](docs/CLOUDBASE_DEPLOY.md)。
+
 ## 接入真实 AI
 
 1. 在左侧“功能 → 设置”中勾选允许使用的模型服务商。
