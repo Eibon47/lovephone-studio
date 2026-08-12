@@ -2,8 +2,6 @@ import { friendlyAiError } from './aiErrors.js';
 
 const LOCAL_AI_BRIDGE = 'http://127.0.0.1:5189';
 const NETLIFY_AI_GATEWAY = '/.netlify/functions/ai';
-const CLOUDBASE_AI_GATEWAY = '/api-ai';
-const CLOUDBASE_GATEWAY_ORIGIN = 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com';
 const REMOTE_PROFILE_KEY = 'lovephone-ai-session-profiles-v1';
 const sessionPromises = new Map();
 let memoryProfiles = {};
@@ -13,12 +11,17 @@ function runningLocally() {
   return ['127.0.0.1', 'localhost'].includes(hostname);
 }
 
+function deploymentGateway() {
+  return String(globalThis.__LOVE_PHONE_RUNTIME_CONFIG__?.aiGatewayUrl || '').trim().replace(/\/+$/, '');
+}
+
 function bridgeUrl(config) {
   const configured = String(config.aiProviders?.bridgeUrl || '').trim().replace(/\/+$/, '');
   if (configured) return configured;
   if (runningLocally()) return LOCAL_AI_BRIDGE;
   const hostname = String(globalThis.location?.hostname || '').toLowerCase();
-  return hostname.endsWith('.netlify.app') ? NETLIFY_AI_GATEWAY : `${CLOUDBASE_GATEWAY_ORIGIN}${CLOUDBASE_AI_GATEWAY}`;
+  if (hostname.endsWith('.netlify.app')) return NETLIFY_AI_GATEWAY;
+  return deploymentGateway();
 }
 
 function localBridgeBase(url) {
@@ -74,7 +77,9 @@ function remoteProfile(profileId, providerId) {
 }
 
 async function remoteRequest(config, body, options = {}) {
-  const response = await fetch(remoteGateway(config), {
+  const gateway = remoteGateway(config);
+  if (!gateway) throw new Error('尚未配置 AI 网关地址，请先在设置中填写自己的网关。');
+  const response = await fetch(gateway, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -102,9 +107,11 @@ export async function ensureAiSession(url) {
 }
 
 async function localRequest(config, path, options = {}, retry = true) {
-  const base = localBridgeBase(bridgeUrl(config));
+  const endpoint = bridgeUrl(config);
+  if (!endpoint) throw new Error('尚未配置 AI 网关地址，请先在设置中填写自己的网关。');
+  const base = localBridgeBase(endpoint);
   if (base) await ensureAiSession(base);
-  const response = await fetch(`${bridgeUrl(config)}${path}`, {
+  const response = await fetch(`${endpoint}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     credentials: base ? 'include' : options.credentials

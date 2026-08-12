@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
-  "envId": "xiaoye-d4ggsw4zt7bce7dba",
+  "envId": "your-cloudbase-environment-id",
   "functionRoot": "cloudbase/functions",
   "functions": [
     {
@@ -9,7 +9,10 @@
       "handler": "index.main",
       "timeout": 60,
       "memorySize": 256,
-      "description": "LovePhone AI 网关：用户会话内的 Key 仅用于转发模型请求"
+      "envVariables": {
+        "LOVEPHONE_ALLOWED_ORIGINS": "https://your-site.example"
+      },
+      "description": "LovePhone AI gateway"
     },
     {
       "name": "wangyiyun66-gateway",
@@ -18,7 +21,10 @@
       "timeout": 30,
       "memorySize": 512,
       "installDependency": true,
-      "description": "网易云音乐网关"
+      "envVariables": {
+        "LOVEPHONE_ALLOWED_ORIGINS": "https://your-site.example"
+      },
+      "description": "LovePhone music gateway"
     }
   ]
 }

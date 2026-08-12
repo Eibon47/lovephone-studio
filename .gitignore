@@ -10,6 +10,7 @@ vendor/mpv/*.dll
 .env
 .env.*
 !.env.example
+cloudbaserc.local.json
 *.pem
 *.key
 *.pfx

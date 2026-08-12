@@ -82,7 +82,7 @@ Chrome 或 Edge 可以把独立小手机安装为 PWA 应用。
 
 ## 部署到腾讯云 CloudBase
 
-项目也支持腾讯云 CloudBase 静态网站托管。网页前端上传至静态托管，AI 请求会自动转到本项目配置的 CloudBase HTTP 云函数；用户填写的 API Key 仍只在当前浏览器会话中使用，不写入腾讯云环境变量或项目配置。完整操作见 [docs/CLOUDBASE_DEPLOY.md](docs/CLOUDBASE_DEPLOY.md)。
+项目也支持腾讯云 CloudBase 静态网站托管。公开源码不包含维护者的 CloudBase 环境 ID 或网关地址；部署者需在被 Git 忽略的本地文件中填写自己的配置。用户填写的 API Key 仍只在当前浏览器会话中使用。完整操作见 [docs/CLOUDBASE_DEPLOY.md](docs/CLOUDBASE_DEPLOY.md)。
 
 ## 接入真实 AI
 

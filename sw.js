@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lovephone-shell-v34';
+const CACHE_NAME = 'lovephone-shell-v35';
 const APP_SHELL = [
   './',
   './?mode=phone',
@@ -46,6 +46,23 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Deployment defaults can change independently from the application code.
+  // Always refresh them first so a browser never stays attached to an old gateway.
+  if (requestUrl.pathname.endsWith('/runtime-config.js')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' })
+        .then(response => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }

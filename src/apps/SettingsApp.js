@@ -157,6 +157,11 @@ function renderAISettings(config, osState = {}) {
   }
 
   return settingsGroup('AI', 'AI 与模型', statusText, `
+    ${settingInput('aiProviders.bridgeUrl', 'AI 网关地址', config.aiProviders?.bridgeUrl, {
+      type: 'url',
+      placeholder: 'https://your-ai-gateway.example',
+      desc: '开源版需填写自己部署的网关；如果当前网站已内置网关，可以留空。'
+    })}
     ${config.apps?.settings?.perRoleApi ? `
       <label class="settings-control-row ai-scope-row">
         <span><strong>配置对象</strong><small>每个角色可以拥有完全独立的 Key 和模型</small></span>

@@ -7,7 +7,6 @@ const SESSION_STORE = 'session';
 const SESSION_KEY = 'netease-cookie';
 const SESSION_ACCOUNT_KEY = 'netease-account';
 const NETLIFY_MUSIC_GATEWAY = '/.netlify/functions/music';
-const CLOUDBASE_MUSIC_GATEWAY = 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/music-gateway';
 
 let databasePromise = null;
 let audio = null;
@@ -17,6 +16,10 @@ let currentIndex = -1;
 let currentTrack = null;
 let statusListener = null;
 let lastEmittedSecond = -1;
+
+function deploymentMusicGateway() {
+  return String(globalThis.__LOVE_PHONE_RUNTIME_CONFIG__?.musicGatewayUrl || '').trim().replace(/\/+$/, '');
+}
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {
@@ -74,11 +77,18 @@ export function musicBaseUrl(config) {
   const hostname = String(globalThis.location?.hostname || '').toLowerCase();
   const secure = globalThis.location?.protocol === 'https:';
   if (!secure || ['localhost', '127.0.0.1'].includes(hostname)) return '';
-  return hostname.endsWith('.netlify.app') ? NETLIFY_MUSIC_GATEWAY : CLOUDBASE_MUSIC_GATEWAY;
+  if (hostname.endsWith('.netlify.app')) return NETLIFY_MUSIC_GATEWAY;
+  return deploymentMusicGateway();
 }
 
 export function usesBuiltInMusicGateway(config) {
-  return musicBaseUrl(config) === NETLIFY_MUSIC_GATEWAY;
+  const active = musicBaseUrl(config);
+  return Boolean(active && (active === NETLIFY_MUSIC_GATEWAY || active === deploymentMusicGateway()));
+}
+
+function usesWrappedMusicGateway(baseUrl) {
+  const active = String(baseUrl || '').replace(/\/+$/, '');
+  return Boolean(active && (active === NETLIFY_MUSIC_GATEWAY || active === deploymentMusicGateway()));
 }
 
 export function normalizeMusicApiUrl(value) {
@@ -211,9 +221,9 @@ export async function loadSavedMusicAccount() {
 }
 
 async function neteaseJson(baseUrl, path, params = {}) {
-  if (String(baseUrl || '').replace(/\/+$/, '') === NETLIFY_MUSIC_GATEWAY) {
+  if (usesWrappedMusicGateway(baseUrl)) {
     const cookie = await readSessionCookie();
-    return musicFetchJson(NETLIFY_MUSIC_GATEWAY, {
+    return musicFetchJson(String(baseUrl).replace(/\/+$/, ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, params, cookie })

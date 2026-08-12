@@ -13,6 +13,8 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "web:build": "node server/build-web.mjs",
+    "web:build:public": "node server/build-public-web.mjs",
+    "cloudbase:deploy": "node server/deploy-cloudbase.mjs",
     "web": "node server/static-server.mjs",
     "web:lan": "node server/start-lan-preview.mjs",
     "services": "node server/start-services.mjs",

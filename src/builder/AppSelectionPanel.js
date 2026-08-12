@@ -419,7 +419,7 @@ function renderSettingsConfig(config) {
           </section>
         `).join('')}
       </div>
-      ${textAreaRow('aiProviders.bridgeUrl', '本机 AI 服务地址', 'API Key 只发送到本机安全网关，不会保存进配置 JSON。', config.aiProviders?.bridgeUrl, 2, 300)}
+      ${textAreaRow('aiProviders.bridgeUrl', 'AI 网关地址', '开源版请填写自己部署的网关。API Key 只在请求时发送给该网关，不会写入导出 JSON。', config.aiProviders?.bridgeUrl, 2, 300)}
     </div>
   `;
 }

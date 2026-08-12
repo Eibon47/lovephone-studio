@@ -26,7 +26,7 @@ git diff --check
 ```powershell
 npm ci
 npm test
-npm run web:build
+npm run web:build:public
 npm audit --omit=dev --registry=https://registry.npmjs.org
 ```
 

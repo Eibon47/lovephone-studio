@@ -107,10 +107,12 @@ test('deployed AI gateway keeps the user key in the browser session and sends it
   }
 });
 
-test('CloudBase deployment uses the CloudBase AI gateway', async () => {
+test('deployment uses only the gateway injected by the local build config', async () => {
   const originalFetch = globalThis.fetch;
   const originalLocation = globalThis.location;
+  const originalRuntimeConfig = globalThis.__LOVE_PHONE_RUNTIME_CONFIG__;
   Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname: 'example.tcloudbaseapp.com', href: 'https://example.tcloudbaseapp.com/' } });
+  globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = { aiGatewayUrl: 'https://private.example/api-ai' };
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), options });
@@ -119,9 +121,31 @@ test('CloudBase deployment uses the CloudBase AI gateway', async () => {
   try {
     const result = await getAiBridgeHealth({ aiProviders: { bridgeUrl: '' } });
     assert.equal(result.ok, true);
-    assert.equal(calls[0].url, 'https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/api-ai');
+    assert.equal(calls[0].url, 'https://private.example/api-ai');
   } finally {
     globalThis.fetch = originalFetch;
     Object.defineProperty(globalThis, 'location', { configurable: true, value: originalLocation });
+    globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = originalRuntimeConfig;
+  }
+});
+
+test('open-source deployment without a configured gateway does not send a request', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  const originalRuntimeConfig = globalThis.__LOVE_PHONE_RUNTIME_CONFIG__;
+  let fetchCount = 0;
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname: 'example.org', href: 'https://example.org/' } });
+  globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = { aiGatewayUrl: '' };
+  globalThis.fetch = async () => { fetchCount += 1; return new Response('{}'); };
+  try {
+    await assert.rejects(
+      getAiBridgeHealth({ aiProviders: { bridgeUrl: '' } }),
+      /尚未配置 AI 网关/
+    );
+    assert.equal(fetchCount, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: originalLocation });
+    globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = originalRuntimeConfig;
   }
 });

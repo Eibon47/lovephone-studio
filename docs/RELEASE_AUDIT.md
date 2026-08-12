@@ -24,6 +24,8 @@
 - `npm run web:build`：通过（2026-08-12 本地验证）。
 - 依赖审计：2026-08-12 使用官方 registry 执行 `npm audit --registry=https://registry.npmjs.org`，结果为 0 个已知漏洞。已移除未参与运行的旧网易云 CLI 开发依赖，并通过 overrides 将 `music-metadata`、`file-type` 与 `js-yaml` 提升到已修复版本。
 - 腾讯云在线音乐：`/music-gateway` 已切回原有 `wangyiyun66-gateway`，健康检查和真实歌曲搜索通过；云函数自身依赖审计为 0 个已知漏洞。
+- 开源构建不包含维护者的 AI 或音乐网关；私有部署默认值只通过被 Git 忽略的本地文件注入。
+- CloudBase AI 和音乐网关已启用前端来源白名单：内测站点健康检查与音乐搜索通过，未授权网站请求返回 403。
 - AI 桥接：陌生来源返回 403，无会话返回 401，密钥存储报告为 `windows-dpapi`。
 - 音乐：本地文件使用浏览器原生播放器；在线音乐仅在用户配置兼容 API 后启用。
 - 桌面编辑器与独立手机页：无横向溢出，控制台无错误。

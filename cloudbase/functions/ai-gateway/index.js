@@ -20,14 +20,22 @@ const PROVIDERS = Object.freeze({
   custom: { protocol: 'openai', customBaseUrl: true }
 });
 
-function response(statusCode, body) {
+function allowedOrigin(event = {}) {
+  const allowed = String(process.env.LOVEPHONE_ALLOWED_ORIGINS || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  if (!allowed.length) return '*';
+  const origin = String(event.headers?.origin || event.headers?.Origin || '').trim();
+  return allowed.includes(origin) ? origin : '';
+}
+
+function response(statusCode, body, origin = '*') {
   return {
     statusCode,
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'access-control-allow-origin': '*',
+      ...(origin ? { 'access-control-allow-origin': origin } : {}),
       'access-control-allow-methods': 'POST, OPTIONS',
       'access-control-allow-headers': 'content-type'
     },
@@ -114,22 +122,24 @@ async function complete(profile, system, messages) {
 
 exports.main = async (event = {}) => {
   const method = String(event.httpMethod || event.method || 'POST').toUpperCase();
-  if (method === 'OPTIONS') return response(204, {});
-  if (method !== 'POST') return response(405, { error: '只支持 POST 请求' });
+  const origin = allowedOrigin(event);
+  if (!origin) return response(403, { error: '当前网站未获授权使用此 AI 网关' }, '');
+  if (method === 'OPTIONS') return response(204, {}, origin);
+  if (method !== 'POST') return response(405, { error: '只支持 POST 请求' }, origin);
   let body;
-  try { body = parseBody(event); } catch (error) { return response(400, { error: error.message || '请求内容无效' }); }
-  if (body.action === 'health') return response(200, { ok: true, service: 'LovePhone CloudBase AI Gateway' });
+  try { body = parseBody(event); } catch (error) { return response(400, { error: error.message || '请求内容无效' }, origin); }
+  if (body.action === 'health') return response(200, { ok: true, service: 'LovePhone CloudBase AI Gateway' }, origin);
   let profile;
-  try { profile = profileFrom(body); } catch (error) { return response(400, { error: error.message || 'AI 配置无效' }); }
-  if (body.action === 'configure') return response(200, { ok: true, providerId: profile.providerId, model: profile.model });
+  try { profile = profileFrom(body); } catch (error) { return response(400, { error: error.message || 'AI 配置无效' }, origin); }
+  if (body.action === 'configure') return response(200, { ok: true, providerId: profile.providerId, model: profile.model }, origin);
   const system = body.action === 'test' ? '你正在执行连接测试。只回复“连接成功”，不要补充其他内容。' : cleanText(body.system, 12000);
   const messages = body.action === 'test' ? [{ role: 'user', content: '测试连接' }] : messagesFrom(body.messages);
-  if (body.action !== 'test' && body.action !== 'chat') return response(400, { error: '未知的 AI 操作' });
-  if (!system || !messages.length) return response(400, { error: '聊天内容不完整' });
+  if (body.action !== 'test' && body.action !== 'chat') return response(400, { error: '未知的 AI 操作' }, origin);
+  if (!system || !messages.length) return response(400, { error: '聊天内容不完整' }, origin);
   try {
     const answer = await complete(profile, system, messages);
-    return response(200, { ok: true, answer, providerId: profile.providerId, model: profile.model });
+    return response(200, { ok: true, answer, providerId: profile.providerId, model: profile.model }, origin);
   } catch (error) {
-    return response(502, { error: cleanText(error?.message, 300) || '模型连接失败' });
+    return response(502, { error: cleanText(error?.message, 300) || '模型连接失败' }, origin);
   }
 };

@@ -95,6 +95,7 @@ export function startStaticServer(options = {}) {
       const relativePath = path.relative(root, filePath).replace(/\\/g, '/');
       const shouldRevalidate = relativePath === 'index.html'
         || relativePath === 'sw.js'
+        || relativePath === 'runtime-config.js'
         || relativePath.startsWith('src/');
       response.writeHead(200, {
         'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',

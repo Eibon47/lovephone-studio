@@ -38,12 +38,20 @@ const MODULES = Object.freeze({
 
 const clean = (value, limit = 200) => String(value ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, limit);
 
-function response(statusCode, payload) {
+function allowedOrigin(event = {}) {
+  const allowed = String(process.env.LOVEPHONE_ALLOWED_ORIGINS || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  if (!allowed.length) return '*';
+  const origin = String(event.headers?.origin || event.headers?.Origin || '').trim();
+  return allowed.includes(origin) ? origin : '';
+}
+
+function response(statusCode, payload, origin = '*') {
   return {
     statusCode,
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
+      ...(origin ? { 'access-control-allow-origin': origin } : {}),
       'access-control-allow-methods': 'POST, OPTIONS',
       'access-control-allow-headers': 'content-type',
       'cache-control': 'no-store',
@@ -107,16 +115,18 @@ async function callModule(name, params, cookie) {
 
 exports.main = async (event = {}) => {
   const method = String(event.httpMethod || event.method || 'POST').toUpperCase();
-  if (method === 'OPTIONS') return response(204, {});
-  if (method !== 'POST') return response(405, { error: '仅支持 POST 请求' });
+  const origin = allowedOrigin(event);
+  if (!origin) return response(403, { error: '当前网站未获授权使用此音乐网关' }, '');
+  if (method === 'OPTIONS') return response(204, {}, origin);
+  if (method !== 'POST') return response(405, { error: '仅支持 POST 请求' }, origin);
   try {
     const body = parseBody(event);
-    if (body.path === '/health') return response(200, { ok: true, provider: 'netease', runtime: 'cloudbase', gateway: 'wangyiyun66-gateway' });
+    if (body.path === '/health') return response(200, { ok: true, provider: 'netease', runtime: 'cloudbase', gateway: 'wangyiyun66-gateway' }, origin);
     const route = ROUTES[clean(body.path, 80)];
-    if (!route) return response(403, { error: '此网易云接口未开放' });
+    if (!route) return response(403, { error: '此网易云接口未开放' }, origin);
     const result = await callModule(route[0], parameters(route[1], body.params), cookieObject(body.cookie));
-    return response(result.status, result.body);
+    return response(result.status, result.body, origin);
   } catch (error) {
-    return response(502, { error: clean(error?.message, 240) || '网易云音乐服务暂时不可用' });
+    return response(502, { error: clean(error?.message, 240) || '网易云音乐服务暂时不可用' }, origin);
   }
 };

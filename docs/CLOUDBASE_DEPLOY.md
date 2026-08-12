@@ -1,34 +1,38 @@
 # 部署到腾讯云 CloudBase
 
-本仓库已配置 CloudBase 环境 `xiaoye-d4ggsw4zt7bce7dba`。腾讯云部署分为两部分：静态网站托管和 HTTP 云函数。
+公开仓库不包含任何维护者的 CloudBase 环境 ID 或网关地址。每个部署者使用自己的私有配置。
 
-## 当前线上地址
+## 首次配置
 
-- 小手机工坊前端：`https://xiaoye-d4ggsw4zt7bce7dba-1452473060.tcloudbaseapp.com`
-- AI 网关：`https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/api-ai`
-- 音乐网关：`https://xiaoye-d4ggsw4zt7bce7dba.service.tcloudbase.com/music-gateway`
+1. 复制 `cloudbaserc.example.json` 为 `cloudbaserc.local.json`。
+2. 把 `envId` 改成自己的 CloudBase 环境 ID。
+3. 复制 `.env.example` 为 `.env.production.local`。
+4. 填写本次部署需要内置的网关：
 
-前端会自动选择 CloudBase 网关，用户无需填写这些地址。AI Key 只保存在用户当前浏览器会话中，并在每次请求时临时转发给模型服务商。
-
-## 后续发布
-
-在项目根目录执行：
-
-```powershell
-npm test
-npm run web:build
-cloudbase fn deploy ai-gateway --force --install-dependency false
-cloudbase fn deploy wangyiyun66-gateway --force --install-dependency true
-cloudbase hosting deploy .\dist -e xiaoye-d4ggsw4zt7bce7dba --enable-git-ignore
+```env
+LOVEPHONE_AI_GATEWAY_URL=https://your-service.example/api-ai
+LOVEPHONE_MUSIC_GATEWAY_URL=https://your-service.example/music-gateway
 ```
 
-首次创建函数和路由已经完成。路由为：
+`cloudbaserc.local.json` 和 `.env.production.local` 已被 Git 忽略，不会进入开源仓库。
+
+## 部署
+
+完成 CloudBase 登录和 HTTP 路由创建后，在项目根目录执行：
+
+```powershell
+npm run cloudbase:deploy
+```
+
+脚本会依次执行测试、构建、部署两个云函数和上传静态网站。建议的 HTTP 路由是：
 
 - `/api-ai` -> `ai-gateway`
 - `/music-gateway` -> `wangyiyun66-gateway`
 
-## 正式上线前
+## 开源构建与私有构建
 
-CloudBase 的默认域名只适合开发测试，存在有效期和访问频率限制。面向公开用户时，请在 CloudBase 控制台的“环境配置 -> HTTP 访问服务”绑定已备案的自定义域名，并将静态托管根路径和两个网关路径都配置到该域名。
+- 没有 `.env.production.local` 时，`npm run web:build` 产生的开源版不带任何网关。
+- 有 `.env.production.local` 时，网关只会写入本次生成的 `dist/runtime-config.js`。
+- 用户在设置中手动填写的地址始终优先于部署默认值。
 
-不要把任何用户 API Key、音乐 Cookie 或腾讯云密钥写入 Git 仓库、`cloudbaserc.json` 或环境变量。
+不要把 API Key、音乐 Cookie、腾讯云密钥或私有网关地址提交到 Git。
