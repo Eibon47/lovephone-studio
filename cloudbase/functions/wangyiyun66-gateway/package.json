@@ -1,0 +1,13 @@
+{
+  "name": "lovephone-wangyiyun66-gateway",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "NeteaseCloudMusicApi": "4.32.0"
+  },
+  "overrides": {
+    "file-type": "21.3.4",
+    "music-metadata": "11.14.0"
+  }
+}

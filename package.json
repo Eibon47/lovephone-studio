@@ -16,7 +16,6 @@
     "web": "node server/static-server.mjs",
     "web:lan": "node server/start-lan-preview.mjs",
     "services": "node server/start-services.mjs",
-    "prepare:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mpv.ps1",
     "desktop": "electron .",
     "desktop:experimental": "electron .",
     "desktop:dir": "electron-builder --win --dir",
@@ -29,13 +28,15 @@
     "NeteaseCloudMusicApi": "4.32.0"
   },
   "devDependencies": {
-    "@music163/ncm-cli": "file:vendor/ncm-cli-package",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3"
   },
   "overrides": {
     "brace-expansion": "5.0.9",
     "fast-uri": "3.1.5",
+    "file-type": "21.3.4",
+    "js-yaml": "4.3.1",
+    "music-metadata": "11.14.0",
     "@electron/get": {
       "undici": "7.29.0"
     },

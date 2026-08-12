@@ -18,13 +18,14 @@
 npm test
 npm run web:build
 cloudbase fn deploy ai-gateway --force --install-dependency false
+cloudbase fn deploy wangyiyun66-gateway --force --install-dependency true
 cloudbase hosting deploy .\dist -e xiaoye-d4ggsw4zt7bce7dba --enable-git-ignore
 ```
 
 首次创建函数和路由已经完成。路由为：
 
 - `/api-ai` -> `ai-gateway`
-- `/music-gateway` -> `yuanxiao-music-gateway`
+- `/music-gateway` -> `wangyiyun66-gateway`
 
 ## 正式上线前
 

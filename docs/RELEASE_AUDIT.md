@@ -1,6 +1,6 @@
 # LovePhone OS 发布核对记录
 
-更新时间：2026-08-11
+更新时间：2026-08-12
 
 ## 已完成
 
@@ -20,9 +20,10 @@
 
 ## 当前验证结果
 
-- `npm test`：144 项通过，0 项失败（2026-08-11 本地验证）。
-- `npm run web:build`：通过（2026-08-11 本地验证）。
-- 依赖审计：项目当前 npm 镜像不实现 `npm audit` 的 advisory 接口；2026-08-11 使用官方 registry 执行 `npm audit --omit=dev --registry=https://registry.npmjs.org`，发现 `NeteaseCloudMusicApi → music-metadata → file-type` 依赖链有 3 个已知漏洞（2 高、1 中）。该依赖仍被 Netlify 在线音乐 Function 使用，不能把审计结果写成“0 漏洞”。
+- `npm test`：145 项通过，0 项失败（2026-08-12 本地验证）。
+- `npm run web:build`：通过（2026-08-12 本地验证）。
+- 依赖审计：2026-08-12 使用官方 registry 执行 `npm audit --registry=https://registry.npmjs.org`，结果为 0 个已知漏洞。已移除未参与运行的旧网易云 CLI 开发依赖，并通过 overrides 将 `music-metadata`、`file-type` 与 `js-yaml` 提升到已修复版本。
+- 腾讯云在线音乐：`/music-gateway` 已切回原有 `wangyiyun66-gateway`，健康检查和真实歌曲搜索通过；云函数自身依赖审计为 0 个已知漏洞。
 - AI 桥接：陌生来源返回 403，无会话返回 401，密钥存储报告为 `windows-dpapi`。
 - 音乐：本地文件使用浏览器原生播放器；在线音乐仅在用户配置兼容 API 后启用。
 - 桌面编辑器与独立手机页：无横向溢出，控制台无错误。
@@ -36,7 +37,6 @@
 - 确认网易云音乐接口、账号数据、封面、歌词和歌曲播放的公开及商业使用授权。
 - 准备隐私政策、用户协议、内容安全规则、客服与数据删除说明。
 - 使用真实但受控的各家模型账号做上线前兼容测试，并设置费用限额和异常监控。
-- 跟进或替换在线音乐 Function 使用的 `NeteaseCloudMusicApi` 依赖链，直到官方 `npm audit --omit=dev --registry=https://registry.npmjs.org` 不再报告高危漏洞；在此之前，不要把在线音乐服务标为已通过安全发布审计。
 - 在 GitHub 仓库设置中启用 Security Advisories、分支保护和 Actions；确认 CI 首次绿色通过。
 - 公开自定义 App 示例时只使用自有素材，并在安装页面与隐私说明中持续明确第三方代码、数据权限、联网域名和 AI 额度风险。
 
