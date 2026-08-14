@@ -21,8 +21,14 @@ if (!/^[a-zA-Z0-9-]{3,80}$/.test(envId) || envId === 'your-cloudbase-environment
 function run(command, args) {
   const windows = process.platform === 'win32';
   const executable = windows ? process.env.ComSpec || 'cmd.exe' : command;
+  const quoteWindowsArgument = value => {
+    const text = String(value);
+    return /^[a-zA-Z0-9_./:=+-]+$/.test(text)
+      ? text
+      : `"${text.replace(/"/g, '""')}"`;
+  };
   const commandArgs = windows
-    ? ['/d', '/s', '/c', `${command} ${args.map(value => `"${String(value).replace(/"/g, '""')}"`).join(' ')}`]
+    ? ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArgument).join(' ')]
     : args;
   const result = spawnSync(executable, commandArgs, { cwd: root, stdio: 'inherit' });
   if (result.error) throw result.error;
