@@ -1,9 +1,11 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildPhoneRuntime } from './build-phone-runtime.mjs';
+import { cacheBustWebBuild } from './cache-bust-build.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'dist');
+const buildVersion = `${Date.now()}`;
 
 async function readLocalEnvironment() {
   const file = path.join(root, '.env.production.local');
@@ -49,9 +51,10 @@ for (const item of ['index.html', 'manifest.webmanifest', 'sw.js']) {
   await cp(path.join(root, item), path.join(output, item));
 }
 await buildPhoneRuntime({ root, output: path.join(output, 'assets', 'generated') });
+await cacheBustWebBuild(output, buildVersion);
 await writeFile(
   path.join(output, 'runtime-config.js'),
   `globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = Object.freeze(${JSON.stringify(runtimeConfig)});\n`,
   'utf8'
 );
-console.log(`LovePhone web build: ${output} (AI gateway: ${runtimeConfig.aiGatewayUrl ? 'configured' : 'not configured'}, music gateway: ${runtimeConfig.musicGatewayUrl ? 'configured' : 'not configured'})`);
+console.log(`LovePhone web build: ${output} (version: ${buildVersion}, AI gateway: ${runtimeConfig.aiGatewayUrl ? 'configured' : 'not configured'}, music gateway: ${runtimeConfig.musicGatewayUrl ? 'configured' : 'not configured'})`);
