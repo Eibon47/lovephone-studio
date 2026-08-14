@@ -118,16 +118,22 @@ test('local music library exposes a removable device-only track', () => {
   assert.match(html, /data-music-delete-local="local-1"/);
 });
 
-test('settings section switches hide disabled configuration surfaces', () => {
+test('settings section switches hide optional surfaces but keep data management available', () => {
   const config = configCopy();
   config.apps.settings.themeControls = false;
   config.apps.settings.apiProfiles = false;
   config.apps.settings.exportImport = false;
-  const html = SettingsApp.render({ id: 'settings', name: '设置' }, config, {});
+  const categories = SettingsApp.render({ id: 'settings', name: '设置' }, config, {});
+  const appearance = SettingsApp.render({ id: 'settings', name: '设置' }, config, { settingsPage: 'appearance' });
+  const services = SettingsApp.render({ id: 'settings', name: '设置' }, config, { settingsPage: 'services' });
+  const data = SettingsApp.render({ id: 'settings', name: '设置' }, config, { settingsPage: 'data' });
 
-  assert.doesNotMatch(html, /外观与显示/);
-  assert.doesNotMatch(html, /AI 与模型/);
-  assert.doesNotMatch(html, /数据与备份/);
+  assert.match(categories, /外观与显示/);
+  assert.match(categories, /备份与安全/);
+  assert.match(appearance, /外观控制已在工坊中关闭/);
+  assert.doesNotMatch(services, /AI 与模型/);
+  assert.match(data, /数据与备份/);
+  assert.match(data, /重置整台小手机/);
 });
 
 test('builder does not advertise unimplemented voice calling or autoplay', () => {

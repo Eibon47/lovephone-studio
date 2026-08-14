@@ -89,19 +89,20 @@ function renderDiscover(config, osState) {
   const online = Boolean(config.apps.music.onlineEnabled && musicBaseUrl(config));
   return `<section class="phone-screen phone-music-app">
     ${renderStatusBar('music-statusbar')}
-    <header class="music-app-header"><button type="button" data-go-home aria-label="返回桌面">‹</button><strong>音乐</strong><button type="button" data-music-upload aria-label="导入本地音乐">＋</button></header>
+    <header class="music-app-header"><button type="button" data-go-home aria-label="返回桌面">‹</button><strong>网易云音乐</strong><button type="button" data-music-upload aria-label="导入本地音乐">＋</button></header>
     <input data-music-file type="file" accept="audio/*,.flac,.m4a,.aac,.ogg,.wav,.webm" hidden multiple />
-    ${online ? `<form class="music-search" data-music-search><span>⌕</span><input name="keywords" value="${escapeHtml(osState.musicQuery || '')}" placeholder="搜索歌曲、歌手或专辑" autocomplete="off" /></form>` : '<p class="music-online-note">在线音乐未配置，可先导入本地音乐。</p>'}
+    ${online ? `<form class="music-search" data-music-search><span>⌕</span><input name="keywords" value="${escapeHtml(osState.musicQuery || '')}" placeholder="搜索网易云歌曲、歌手或专辑" autocomplete="off" /></form>` : '<p class="music-online-note">网易云音乐尚未连接，请前往“设置 → AI 与在线服务”填写兼容 API 地址。</p>'}
     <div class="music-scroll-area">
       ${searching ? `<div class="music-section-heading"><strong>搜索结果</strong><button type="button" data-music-clear-search>返回首页</button></div><div class="music-track-list">${results.length ? renderTrackRows(results) : '<p class="music-empty-library">没有找到相关歌曲</p>'}</div>` : `
-        <div class="music-section-heading"><strong>本地音乐</strong><button type="button" data-music-upload>导入音乐</button></div>
-        <div class="music-track-list">${localTracks.length ? renderTrackRows(localTracks.slice(0, 6)) : '<p class="music-empty-library">从手机导入音乐后，会安全保存在这台设备。</p>'}</div>
         ${online && config.apps.music.showRecommendations ? `
+          <div class="music-online-banner"><span><i></i><strong>网易云音乐已连接</strong></span><small>${osState.musicAccount ? `${escapeHtml(osState.musicAccount.nickname || '网易云账号')} 已登录` : '可在设置中扫码登录并读取个人歌单'}</small></div>
           <div class="music-shortcuts"><button type="button" data-music-jump="daily"><i>▥</i><small>推荐歌曲</small></button><button type="button" data-music-jump="charts"><i>◉</i><small>榜单</small></button><button type="button" data-music-open-library><i>♬</i><small>我的音乐</small></button></div>
           <div class="music-section-heading" id="music-daily"><strong>推荐歌曲</strong><span>${home.daily?.length ? '在线更新' : '加载中'}</span></div>
           <div class="music-track-list">${home.daily?.length ? renderTrackRows(home.daily.slice(0, 6)) : '<p class="music-empty-library">暂时没有可展示的推荐</p>'}</div>
           <div class="music-section-heading" id="music-charts"><strong>热门榜单</strong><span>在线音乐</span></div>
           <div class="music-playlist-grid">${home.charts?.length ? renderPlaylistCards(home.charts.slice(0, 6)) : '<p class="music-empty-library">暂时没有榜单</p>'}</div>` : ''}
+        <div class="music-section-heading"><strong>本地音乐</strong><button type="button" data-music-upload>导入音乐</button></div>
+        <div class="music-track-list">${localTracks.length ? renderTrackRows(localTracks.slice(0, 6)) : '<p class="music-empty-library">从手机导入音乐后，会安全保存在这台设备。</p>'}</div>
       `}
       ${osState.musicStatus ? `<p class="music-status-message">${escapeHtml(osState.musicStatus)}</p>` : ''}
     </div>

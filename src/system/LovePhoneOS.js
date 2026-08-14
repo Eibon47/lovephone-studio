@@ -1,6 +1,6 @@
-import { renderAppRouter, bindAppRouter } from './AppRouter.js?v=app-config-96';
+import { renderAppRouter, bindAppRouter } from './AppRouter.js?v=app-config-101';
 import { bindGridStackWidgets, shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-62';
-import { renderHomeScreen } from './HomeScreen.js?v=app-config-95';
+import { renderHomeScreen } from './HomeScreen.js?v=app-config-103';
 import { bindHomeWidgetActions } from './HomeWidgetActions.js?v=app-config-92';
 import { escapeHtml } from './html.js';
 import { getAppTheme } from './appAppearance.js?v=app-config-71';

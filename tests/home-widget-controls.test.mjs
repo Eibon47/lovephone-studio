@@ -42,3 +42,15 @@ test('role widgets keep companion content scoped to the active character', () =>
   assert.match(html, /--mood:20%/);
   assert.doesNotMatch(html, /--mood:90%/);
 });
+
+test('uploaded App icons are marked for shape clipping while preset icons keep their inset', () => {
+  const config = cloneConfig();
+  config.theme.appLooks.chat = {
+    uiTheme: 'lovephone',
+    icon: { mode: 'upload', value: 'data:image/png;base64,Y3VzdG9tLWljb24=' }
+  };
+
+  const html = renderHomeScreen(config, { currentApp: 'home' });
+  assert.match(html, /phone-app-icon is-uploaded/);
+  assert.match(html, /phone-app-icon"><img src="assets\/theme-fantasy/);
+});

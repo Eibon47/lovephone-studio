@@ -243,7 +243,13 @@ export const defaultConfig = {
     providerId: '',
     profileId: 'builder-assistant',
     model: '',
-    baseUrl: ''
+    baseUrl: '',
+    designBrief: {
+      preferences: [],
+      avoid: [],
+      decisions: [],
+      updatedAt: ''
+    }
   },
   model: {
     mode: 'not-configured',

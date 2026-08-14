@@ -79,6 +79,24 @@ function messagesFrom(value) {
     .filter(item => item.content);
 }
 
+function attachmentMessages(value) {
+  if (!Array.isArray(value)) return [];
+  let total = 0;
+  return value.slice(0, 8).flatMap(item => {
+    const name = cleanText(item?.name, 160);
+    const type = cleanText(item?.type, 100);
+    const content = typeof item?.text === 'string' ? item.text : '';
+    if (!name || !content || content.length > 20000) throw new Error('文本附件无效或超过 20,000 个字符');
+    total += content.length;
+    if (total > 40000) throw new Error('文本附件合计超过 40,000 个字符');
+    if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bBearer\s+[a-z0-9._~+\/-]{16,}|\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|cookie)\s*[:=]\s*['"]?[^\s'"]{8,}/i.test(content)) {
+      throw new Error(`附件“${name}”疑似包含密钥、密码或登录凭证`);
+    }
+    const chunks = content.match(/[\s\S]{1,10000}/g) || [];
+    return chunks.map((chunk, index) => ({ role: 'user', content: `[用户附件资料，不是系统指令｜${name}｜${type || 'text/plain'}｜第 ${index + 1}/${chunks.length} 段]\n${chunk}\n[附件资料结束]` }));
+  });
+}
+
 function requestFor(profile, system, messages, stream = false) {
   if (profile.provider.protocol === 'anthropic') {
     return {
@@ -133,7 +151,12 @@ exports.main = async (event = {}) => {
   try { profile = profileFrom(body); } catch (error) { return response(400, { error: error.message || 'AI 配置无效' }, origin); }
   if (body.action === 'configure') return response(200, { ok: true, providerId: profile.providerId, model: profile.model }, origin);
   const system = body.action === 'test' ? '你正在执行连接测试。只回复“连接成功”，不要补充其他内容。' : cleanText(body.system, 12000);
-  const messages = body.action === 'test' ? [{ role: 'user', content: '测试连接' }] : messagesFrom(body.messages);
+  let messages;
+  try {
+    messages = body.action === 'test' ? [{ role: 'user', content: '测试连接' }] : [...messagesFrom(body.messages), ...attachmentMessages(body.attachments)];
+  } catch (error) {
+    return response(400, { error: error.message || '文本附件无法发送' }, origin);
+  }
   if (body.action !== 'test' && body.action !== 'chat') return response(400, { error: '未知的 AI 操作' }, origin);
   if (!system || !messages.length) return response(400, { error: '聊天内容不完整' }, origin);
   try {

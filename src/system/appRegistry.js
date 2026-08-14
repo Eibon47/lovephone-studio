@@ -1,5 +1,5 @@
 import { CharacterApp } from '../apps/CharacterApp.js?v=app-config-96';
-import { ChatApp } from '../apps/ChatApp.js?v=app-config-95';
+import { ChatApp } from '../apps/ChatApp.js?v=app-config-101';
 import { SettingsApp } from '../apps/SettingsApp.js?v=app-config-93';
 import { MusicApp } from '../apps/MusicApp.js?v=app-config-93';
 import { PlaceholderApp } from '../apps/PlaceholderApp.js?v=app-config-61';

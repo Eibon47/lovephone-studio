@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import path from 'node:path';
+import { buildPhoneRuntime } from './build-phone-runtime.mjs';
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -122,6 +123,9 @@ export function startStaticServer(options = {}) {
 }
 
 if (process.argv[1]?.endsWith('static-server.mjs')) {
+  await buildPhoneRuntime({
+    root: process.env.LOVEPHONE_APP_ROOT || process.cwd()
+  });
   await startStaticServer({
     root: process.env.LOVEPHONE_APP_ROOT || process.cwd()
   });

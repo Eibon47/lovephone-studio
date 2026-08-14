@@ -12,7 +12,7 @@ import {
 import {
   primaryAnniversary
 } from '../services/anniversaryService.js?v=app-config-44';
-import { renderCustomWidgets } from './customWidgetRuntime.js?v=app-config-70';
+import { renderCustomWidgets } from './customWidgetRuntime.js?v=app-config-100';
 import { phoneSetupProgress, shouldShowPhoneSetup } from '../services/phoneSetupService.js?v=app-config-1';
 import { collectPhoneNotifications } from '../services/phoneNotificationService.js?v=app-config-1';
 import { characterPresence } from '../services/characterPresenceService.js?v=app-config-1';
@@ -49,10 +49,11 @@ function defaultAppLayout(index) {
 
 function appIconHtml(app, currentApp, config) {
   const icon = getAppIcon(config, app);
+  const uploadedClass = /^data:image\//i.test(icon) ? ' is-uploaded' : '';
   const activeClass = currentApp === app.id ? ' active' : '';
   return `
     <button class="phone-app${activeClass}" type="button" data-open-app="${app.id}" aria-label="${escapeHtml(app.name)}">
-      <span class="phone-app-icon"><img src="${icon}" alt="" /></span>
+      <span class="phone-app-icon${uploadedClass}"><img src="${icon}" alt="" /></span>
       <span class="phone-app-name">${escapeHtml(app.name)}</span>
     </button>
   `;

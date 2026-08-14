@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getPwaInstallHelp,
   getStandaloneUrl,
+  getStudioUrl,
   isPhoneMode
 } from '../src/services/pwaService.js';
 
@@ -23,4 +24,11 @@ test('standalone URL keeps the deployment path and removes editor parameters', (
     href: 'https://example.com/lovephone/index.html?flow=apps-v7#preview'
   });
   assert.equal(href, 'https://example.com/lovephone/index.html?mode=phone');
+});
+
+test('studio return URL opens the completion step without phone mode', () => {
+  const href = getStudioUrl({
+    href: 'https://example.com/lovephone/index.html?mode=phone#preview'
+  });
+  assert.equal(href, 'https://example.com/lovephone/index.html?step=save');
 });

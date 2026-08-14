@@ -1,9 +1,9 @@
 import { renderAppSelectionPanel, bindAppSelectionPanel } from './builder/AppSelectionPanel.js?v=app-config-86';
-import { renderAppearancePanel, bindAppearancePanel } from './builder/AppearancePanel.js?v=app-config-84';
+import { renderAppearancePanel, bindAppearancePanel } from './builder/AppearancePanel.js?v=app-config-103';
 import { renderCustomizationDrawer } from './builder/CustomizationDrawer.js?v=app-config-84';
-import { renderAiAssistantPanel, bindAiAssistantPanel } from './builder/AiAssistantPanel.js?v=app-config-87';
+import { renderAiAssistantPanel, bindAiAssistantPanel } from './builder/AiAssistantPanel.js?v=app-config-100';
 import { renderPreviewActions, bindPreviewActions } from './builder/PreviewActions.js?v=app-config-46';
-import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-96';
+import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-103';
 import { getEnabledApps } from './system/appRegistry.js?v=app-config-96';
 import {
   createConfigBackup,
@@ -28,9 +28,11 @@ import { cloneConfig } from './config/defaultConfig.js?v=app-config-95';
 import {
   applyBuilderAssistantOperations,
   buildBuilderAssistantSystemPrompt,
+  buildWidgetGenerationSystemPrompt,
   createBuilderAssistantContext,
-  parseBuilderAssistantResponse
-} from './services/builderAssistantService.js?v=app-config-85';
+  parseBuilderAssistantResponse,
+  parseWidgetGenerationResponse
+} from './services/builderAssistantService.js?v=app-config-100';
 import { roleProfileId } from './services/aiProfileScope.js?v=app-config-45';
 import {
   enqueueAiProfileDelete,
@@ -40,12 +42,13 @@ import { purgeCharacterData } from './services/characterDataService.js?v=app-con
 import { ensureCharacterChatSession } from './services/chatSessionService.js?v=app-config-95';
 import {
   getStandaloneUrl,
+  getStudioUrl,
   getPwaInstallHelp,
   installPwa,
   isPhoneMode,
   isPwaInstallAvailable,
   setupPwa
-} from './services/pwaService.js?v=app-config-46';
+} from './services/pwaService.js?v=app-config-102';
 import { checkStartupHealth } from './services/startupHealthService.js?v=app-config-92';
 import {
   cloneCustomization,
@@ -60,15 +63,15 @@ import {
   normalizeCustomization,
   validateCustomCss,
   validateCustomWidgetCode
-} from './services/customizationModel.js?v=app-config-84';
+} from './services/customizationModel.js?v=app-config-100';
 import {
   createThemePackage,
   downloadThemePackage,
   inspectThemePackage
 } from './services/themePackageService.js';
 import {
-  createStandalonePhoneArchive,
-  downloadStandalonePhoneArchive
+  createStandalonePhoneHtml,
+  downloadStandalonePhoneHtml
 } from './services/standalonePhoneExportService.js';
 import { getCustomizationStore } from './storage/customizationStore.js';
 import { getCustomAppStore } from './storage/customAppStore.js';
@@ -78,6 +81,11 @@ import {
   downloadCustomAppPackage,
   inspectCustomAppPackage
 } from './services/customAppPackageService.js';
+import {
+  addAssistantFiles,
+  assistantAttachmentSummary,
+  textAttachmentsForRequest
+} from './services/assistantAttachmentService.js';
 
 const app = document.getElementById('app');
 const exportedPhone = globalThis.__LOVE_PHONE_EXPORT__;
@@ -85,10 +93,13 @@ const phoneMode = isPhoneMode(
   location.search,
   window.matchMedia?.('(display-mode: standalone)').matches
 ) || Boolean(exportedPhone?.config);
+const phonePreviewMode = new URLSearchParams(location.search).get('mode') === 'phone'
+  && !window.matchMedia?.('(display-mode: standalone)').matches
+  && !Boolean(exportedPhone?.config);
 const steps = [
-  { id: 'apps', label: '功能' },
-  { id: 'appearance', label: '美化' },
-  { id: 'save', label: '完成' }
+  { id: 'apps', label: '选择功能' },
+  { id: 'appearance', label: '设计外观' },
+  { id: 'save', label: '完成下载' }
 ];
 
 async function loadRuntimeCapabilities() {
@@ -126,7 +137,9 @@ const state = {
     seedConfig: exportedPhone?.config,
     isolated: Boolean(exportedPhone?.config)
   }),
-  activeStep: 'apps',
+  activeStep: ['apps', 'appearance', 'save'].includes(new URLSearchParams(location.search).get('step'))
+    ? new URLSearchParams(location.search).get('step')
+    : 'apps',
   phone: {
     currentApp: 'home',
     characterView: 'list',
@@ -134,6 +147,7 @@ const state = {
     selectedCharacterId: null,
     chatView: 'list',
     chatCharacterId: null,
+    settingsPage: 'categories',
     runtimeCapabilities,
     customApps: initialCustomApps
   },
@@ -162,15 +176,31 @@ const state = {
     customAppImportPreview: null,
     customAppManagerId: null,
     customAppGuideOpen: false,
+    advancedSettingsOpen: false,
     aiAssistant: {
       open: false,
       isSending: false,
       messages: [],
+      panelView: 'chat',
+      connectionApiKey: '',
+      lastResponseIntent: 'chat',
       lastOperations: [],
+      attachments: [],
+      attachmentError: '',
+      pendingCustomAppIcons: {},
+      draftCustomAppsBase: null,
+      pendingThemePackage: null,
+      pendingWidgetProposal: null,
+      generatedWidgetReview: null,
+      widgetGenerationStatus: '',
+      isGeneratingWidget: false,
       draftBase: null,
-      draftHistory: []
+      draftHistory: [],
+      previewTargetApp: null,
+      position: { x: 420, y: 24 }
     },
     installAvailable: isPwaInstallAvailable(),
+    exportState: { status: 'idle', message: '' },
     storageStatus: getStorageStatusSnapshot()
   }
 };
@@ -303,6 +333,7 @@ function selectSettingsAppearancePreview(view) {
   if (!['top', 'groups', 'controls'].includes(view)) return null;
   state.ui.settingsAppearancePreview = view;
   state.phone.currentApp = 'settings';
+  state.phone.settingsPage = 'appearance';
   state.phone.settingsAppearanceAnchor = view;
   return view;
 }
@@ -501,6 +532,40 @@ function pushAssistantMessage(role, content) {
   ].slice(-14);
 }
 
+const DESIGN_BRIEF_KEYS = new Set(['preferences', 'avoid', 'decisions']);
+
+function updateDesignBrief(mutator) {
+  const storageConfig = cloneConfig(state.ui.aiAssistant.draftBase || state.config);
+  const currentBrief = storageConfig.aiAssistant?.designBrief || {};
+  const nextBrief = {
+    preferences: [...(currentBrief.preferences || [])],
+    avoid: [...(currentBrief.avoid || [])],
+    decisions: [...(currentBrief.decisions || [])],
+    updatedAt: currentBrief.updatedAt || ''
+  };
+  mutator(nextBrief);
+  nextBrief.preferences = [...new Set(nextBrief.preferences.map(String).map(item => item.trim()).filter(Boolean))].slice(0, 20);
+  nextBrief.avoid = [...new Set(nextBrief.avoid.map(String).map(item => item.trim()).filter(Boolean))].slice(0, 20);
+  nextBrief.decisions = [...new Set(nextBrief.decisions.map(String).map(item => item.trim()).filter(Boolean))].slice(0, 20);
+  nextBrief.updatedAt = new Date().toISOString();
+  storageConfig.aiAssistant.designBrief = nextBrief;
+  saveConfig(storageConfig);
+  state.config.aiAssistant.designBrief = cloneConfig(nextBrief);
+  if (state.ui.aiAssistant.draftBase) {
+    state.ui.aiAssistant.draftBase.aiAssistant.designBrief = cloneConfig(nextBrief);
+  }
+  return nextBrief;
+}
+
+function rememberAssistantDesign(updates = []) {
+  const safeUpdates = updates.filter(item => DESIGN_BRIEF_KEYS.has(item?.kind) && String(item.value || '').trim());
+  if (!safeUpdates.length) return;
+  updateDesignBrief(brief => {
+    safeUpdates.forEach(item => brief[item.kind].push(String(item.value).trim().slice(0, 120)));
+  });
+  pushAssistantMessage('assistant', `已记住：${safeUpdates.map(item => item.value).join('；')}`);
+}
+
 function openAssistantPreview(appId) {
   state.phone.currentApp = appId || 'home';
   if (appId === 'chat') state.phone.chatView = 'list';
@@ -527,7 +592,11 @@ async function sendAssistantRequest(content) {
   render();
 
   try {
-    const context = createBuilderAssistantContext(state.config, state.phone);
+    const context = createBuilderAssistantContext(
+      state.config,
+      state.phone,
+      state.ui.aiAssistant.attachments.map(assistantAttachmentSummary)
+    );
     const history = state.ui.aiAssistant.messages
       .slice(-10)
       .map(item => ({ role: item.role, content: item.content }));
@@ -535,32 +604,128 @@ async function sendAssistantRequest(content) {
       providerId,
       profileId: assistantConfig.profileId || 'builder-assistant',
       system: buildBuilderAssistantSystemPrompt(context),
-      messages: history
+      messages: history,
+      attachments: textAttachmentsForRequest(state.ui.aiAssistant.attachments)
     });
-    const result = parseBuilderAssistantResponse(raw, state.config);
+    const resources = { attachments: state.ui.aiAssistant.attachments, customApps: state.phone.customApps };
+    const result = parseBuilderAssistantResponse(raw, state.config, resources);
+    state.ui.aiAssistant.lastResponseIntent = result.intent;
+    state.ui.aiAssistant.pendingWidgetProposal = result.widgetProposal || null;
+    if (result.widgetProposal) {
+      state.ui.aiAssistant.generatedWidgetReview = null;
+      state.ui.aiAssistant.widgetGenerationStatus = '';
+    }
     if (result.operations.length) {
       const before = cloneConfig(state.config);
-      const draft = applyBuilderAssistantOperations(state.config, result.operations);
+      const customAppsBefore = cloneConfig(state.phone.customApps || []);
+      const draft = applyBuilderAssistantOperations(state.config, result.operations, resources);
       if (!state.ui.aiAssistant.draftBase) state.ui.aiAssistant.draftBase = cloneConfig(before);
-      state.ui.aiAssistant.draftHistory.push({ config: before, operations: result.operations });
+      state.ui.aiAssistant.draftHistory.push({
+        config: before,
+        customApps: customAppsBefore,
+        operations: result.operations,
+        previewAppId: draft.previewAppId || 'home'
+      });
       state.config = draft.config;
+      draft.sideEffects.forEach(effect => {
+        if (effect.type !== 'customAppIcon') return;
+        if (!state.ui.aiAssistant.draftCustomAppsBase) state.ui.aiAssistant.draftCustomAppsBase = customAppsBefore;
+        state.ui.aiAssistant.pendingCustomAppIcons[effect.id] = effect.value;
+        state.phone.customApps = (state.phone.customApps || []).map(app => app.id === effect.id ? { ...app, iconOverride: effect.value } : app);
+      });
       state.ui.aiAssistant.lastOperations = draft.operations;
-      if (draft.previewAppId) openAssistantPreview(draft.previewAppId);
+      state.ui.aiAssistant.previewTargetApp = draft.previewAppId || 'home';
+      openAssistantPreview(state.ui.aiAssistant.previewTargetApp);
     }
     pushAssistantMessage('assistant', result.reply);
+    rememberAssistantDesign(result.designMemoryUpdates);
   } catch (error) {
-    pushAssistantMessage('assistant', `暂时无法生成草稿：${error.message || '请检查设置中的模型连接。'}`);
+    pushAssistantMessage('assistant', `暂时无法回复：${error.message || '请检查模型连接后再试。'}`);
   } finally {
     state.ui.aiAssistant.isSending = false;
     render();
   }
 }
 
-function applyAssistantDraft() {
+async function generateAssistantWidget() {
+  const assistant = state.ui.aiAssistant;
+  const proposal = assistant.pendingWidgetProposal;
+  if (!proposal || assistant.isGeneratingWidget) return;
+  const assistantConfig = state.config.aiAssistant || {};
+  assistant.isGeneratingWidget = true;
+  assistant.widgetGenerationStatus = '正在生成并进行安全检查...';
+  assistant.lastResponseIntent = 'generateWidget';
+  render();
+  try {
+    const context = createBuilderAssistantContext(state.config, state.phone, assistant.attachments.map(assistantAttachmentSummary));
+    const raw = await streamAiChat(state.config, {
+      providerId: assistantConfig.providerId,
+      profileId: assistantConfig.profileId || 'builder-assistant',
+      system: buildWidgetGenerationSystemPrompt(context, proposal),
+      messages: [{ role: 'user', content: '请根据已确认的组件方案生成一个可离线运行的组件。' }]
+    });
+    const result = parseWidgetGenerationResponse(raw, state.config, proposal);
+    if (!result.operations.length) {
+      assistant.widgetGenerationStatus = '代码没有通过安全检查，未加入右侧预览。你可以重新生成。';
+      pushAssistantMessage('assistant', result.reply || '这次代码没有通过安全检查，我没有把它放进小手机。');
+      return;
+    }
+    const before = cloneConfig(state.config);
+    const draft = applyBuilderAssistantOperations(state.config, result.operations);
+    if (!assistant.draftBase) assistant.draftBase = cloneConfig(before);
+    assistant.draftHistory.push({ config: before, operations: result.operations, previewAppId: 'home' });
+    state.config = draft.config;
+    assistant.lastOperations = draft.operations;
+    assistant.previewTargetApp = 'home';
+    assistant.generatedWidgetReview = { ...result.operations[0].args, safetyPassed: true };
+    assistant.widgetGenerationStatus = '安全检查已通过，组件正在右侧预览。';
+    assistant.pendingWidgetProposal = null;
+    openAssistantPreview('home');
+    pushAssistantMessage('assistant', result.reply || '组件已通过安全检查，并放到右侧桌面预览。');
+  } catch (error) {
+    assistant.widgetGenerationStatus = `生成失败：${error.message || '请稍后再试。'}`;
+  } finally {
+    assistant.isGeneratingWidget = false;
+    render();
+  }
+}
+
+async function applyAssistantDraft() {
   if (!state.ui.aiAssistant.draftBase) return;
+  try {
+    if (state.ui.aiAssistant.pendingThemePackage) {
+      const preview = state.ui.aiAssistant.pendingThemePackage;
+      const store = getCustomizationStore();
+      await store.savePackage({
+        id: preview.manifest.id,
+        name: preview.manifest.name,
+        type: preview.manifest.type,
+        version: preview.manifest.version,
+        targetAppId: preview.manifest.targetAppId,
+        manifest: preview.manifest,
+        customization: preview.customization
+      }, { replace: true });
+      for (const asset of preview.assets) {
+        await store.saveAsset(preview.manifest.id, { id: asset.id, name: asset.name, mediaType: mediaTypeForAsset(asset.name), data: asset.data }, { replace: true });
+      }
+    }
+    for (const [id, iconOverride] of Object.entries(state.ui.aiAssistant.pendingCustomAppIcons || {})) {
+      await customAppStore.update(id, { iconOverride });
+    }
+  } catch (error) {
+    pushAssistantMessage('assistant', `草稿保存失败：${error.message || '请检查本地存储后重试。'}`);
+    render();
+    return;
+  }
   state.ui.aiAssistant.draftBase = null;
   state.ui.aiAssistant.draftHistory = [];
   state.ui.aiAssistant.lastOperations = [];
+  state.ui.aiAssistant.previewTargetApp = null;
+  state.ui.aiAssistant.generatedWidgetReview = null;
+  state.ui.aiAssistant.widgetGenerationStatus = '';
+  state.ui.aiAssistant.pendingCustomAppIcons = {};
+  state.ui.aiAssistant.draftCustomAppsBase = null;
+  state.ui.aiAssistant.pendingThemePackage = null;
   persist('AI 美化草稿已应用并保存。');
   pushAssistantMessage('assistant', '已应用这次美化草稿。之后还可以继续告诉我想调整的地方。');
   render();
@@ -570,9 +735,16 @@ function discardAssistantDraft() {
   const original = state.ui.aiAssistant.draftBase;
   if (!original) return;
   state.config = cloneConfig(original);
+  if (state.ui.aiAssistant.draftCustomAppsBase) state.phone.customApps = cloneConfig(state.ui.aiAssistant.draftCustomAppsBase);
   state.ui.aiAssistant.draftBase = null;
   state.ui.aiAssistant.draftHistory = [];
   state.ui.aiAssistant.lastOperations = [];
+  state.ui.aiAssistant.previewTargetApp = null;
+  state.ui.aiAssistant.generatedWidgetReview = null;
+  state.ui.aiAssistant.widgetGenerationStatus = '';
+  state.ui.aiAssistant.pendingCustomAppIcons = {};
+  state.ui.aiAssistant.draftCustomAppsBase = null;
+  state.ui.aiAssistant.pendingThemePackage = null;
   pushAssistantMessage('assistant', '已放弃这次草稿，原来的小手机外观没有改变。');
   render();
 }
@@ -582,7 +754,36 @@ function undoAssistantDraft() {
   if (!history?.length) return;
   const previous = history.pop();
   state.config = cloneConfig(previous.config);
+  if (previous.customApps) state.phone.customApps = cloneConfig(previous.customApps);
+  state.ui.aiAssistant.pendingThemePackage = [...history].reverse().find(item => item.themePackage)?.themePackage || null;
+  if (state.ui.aiAssistant.draftCustomAppsBase) {
+    const baseIcons = Object.fromEntries(state.ui.aiAssistant.draftCustomAppsBase.map(app => [app.id, app.iconOverride || '']));
+    state.ui.aiAssistant.pendingCustomAppIcons = Object.fromEntries((state.phone.customApps || []).flatMap(app => {
+      const value = app.iconOverride || '';
+      return value !== (baseIcons[app.id] || '') ? [[app.id, value]] : [];
+    }));
+  }
+  if (previous.operations?.some(operation => operation.tool === 'createCodeWidget')) {
+    state.ui.aiAssistant.generatedWidgetReview = null;
+    state.ui.aiAssistant.widgetGenerationStatus = '';
+  }
+  if (!history.length) {
+    state.ui.aiAssistant.draftBase = null;
+    state.ui.aiAssistant.lastOperations = [];
+    state.ui.aiAssistant.previewTargetApp = null;
+    state.ui.aiAssistant.generatedWidgetReview = null;
+    state.ui.aiAssistant.pendingCustomAppIcons = {};
+    state.ui.aiAssistant.draftCustomAppsBase = null;
+    state.ui.aiAssistant.pendingThemePackage = null;
+    openAssistantPreview('home');
+    pushAssistantMessage('assistant', '已撤销上一组草稿修改，当前没有待确认的修改。');
+    render();
+    return;
+  }
   state.ui.aiAssistant.lastOperations = history.at(-1)?.operations || [];
+  const restoredTarget = history.at(-1)?.previewAppId || 'home';
+  state.ui.aiAssistant.previewTargetApp = restoredTarget;
+  openAssistantPreview(restoredTarget);
   pushAssistantMessage('assistant', '已撤销上一组草稿修改。');
   render();
 }
@@ -600,14 +801,136 @@ function bindAssistantPanel(root) {
     suggest: prompt => sendAssistantRequest(prompt),
     send: content => sendAssistantRequest(content),
     configure: () => {
-      state.activeStep = 'apps';
-      state.ui.appConfigId = 'ai-assistant';
+      state.ui.aiAssistant.panelView = state.ui.aiAssistant.panelView === 'connection' ? 'chat' : 'connection';
+      state.ui.aiAssistant.open = true;
       render();
     },
+    showChat: () => {
+      state.ui.aiAssistant.panelView = 'chat';
+      render();
+    },
+    showMemory: () => {
+      state.ui.aiAssistant.panelView = state.ui.aiAssistant.panelView === 'memory' ? 'chat' : 'memory';
+      state.ui.aiAssistant.open = true;
+      render();
+    },
+    addMemory: ({ kind, value }) => {
+      if (!DESIGN_BRIEF_KEYS.has(kind) || !String(value || '').trim()) return;
+      updateDesignBrief(brief => brief[kind].push(String(value).trim().slice(0, 120)));
+      render();
+    },
+    removeMemory: ({ kind, index }) => {
+      if (!DESIGN_BRIEF_KEYS.has(kind) || !Number.isInteger(index)) return;
+      updateDesignBrief(brief => brief[kind].splice(index, 1));
+      render();
+    },
+    addAttachments: async files => {
+      try {
+        const attachments = await addAssistantFiles(state.ui.aiAssistant.attachments, files);
+        for (const attachment of attachments) {
+          if (attachment.preflight || !attachment.file) continue;
+          if (attachment.kind === 'theme-package') attachment.preflight = await inspectThemePackage(attachment.file);
+          if (attachment.kind === 'app-package') attachment.preflight = await inspectCustomAppPackage(attachment.file);
+          if (attachment.kind === 'package') {
+            try {
+              attachment.preflight = await inspectCustomAppPackage(attachment.file);
+              attachment.kind = 'app-package';
+            } catch {
+              attachment.preflight = await inspectThemePackage(attachment.file);
+              attachment.kind = 'theme-package';
+            }
+          }
+          if (attachment.kind === 'app-package' && attachment.preflight) {
+            attachment.isUpdate = Boolean(await customAppStore.getApp(attachment.preflight.manifest.id));
+          }
+          if (attachment.preflight) attachment.status = '本地安全预检通过，等待确认';
+        }
+        state.ui.aiAssistant.attachments = attachments;
+        state.ui.aiAssistant.attachmentError = '';
+        if (attachments.some(item => item.kind === 'text')) {
+          pushAssistantMessage('assistant', '提醒：文本和代码附件会在发送消息时交给当前 AI 服务商。发送前请确认文件中没有 API Key、密码、Cookie、私钥或其他登录凭证。');
+        }
+      } catch (error) {
+        state.ui.aiAssistant.attachmentError = error.message || '附件无法读取。';
+      }
+      render();
+    },
+    removeAttachment: id => {
+      state.ui.aiAssistant.attachments = state.ui.aiAssistant.attachments.filter(item => item.id !== id)
+        .map((item, index) => ({ ...item, label: `附件 ${index + 1}` }));
+      state.ui.aiAssistant.attachmentError = '';
+      render();
+    },
+    previewThemeAttachment: id => {
+      const attachment = state.ui.aiAssistant.attachments.find(item => item.id === id && item.kind === 'theme-package');
+      if (!attachment?.preflight) return;
+      const before = cloneConfig(state.config);
+      if (!state.ui.aiAssistant.draftBase) state.ui.aiAssistant.draftBase = cloneConfig(before);
+      state.ui.aiAssistant.draftHistory.push({ config: before, customApps: cloneConfig(state.phone.customApps || []), operations: [{ tool: 'importThemePackage', args: { name: attachment.preflight.manifest.name } }], previewAppId: 'home', themePackage: attachment.preflight });
+      state.config.theme.customization = normalizeCustomization({ ...attachment.preflight.customization, css: attachment.preflight.css, activePackageIds: [...(attachment.preflight.customization.activePackageIds || []), attachment.preflight.manifest.id] });
+      state.ui.aiAssistant.pendingThemePackage = attachment.preflight;
+      state.ui.aiAssistant.lastOperations = [{ tool: 'importThemePackage', args: { name: attachment.preflight.manifest.name } }];
+      openAssistantPreview('home');
+      render();
+    },
+    installAppAttachment: async id => {
+      const attachment = state.ui.aiAssistant.attachments.find(item => item.id === id && item.kind === 'app-package');
+      const preview = attachment?.preflight;
+      if (!preview || !window.confirm(`安装“${preview.manifest.name}”后，它会获得安装页列出的权限。确定继续吗？`)) return;
+      try {
+        const existing = await customAppStore.getApp(preview.manifest.id);
+        if (existing && !window.confirm('检测到相同 App ID。更新会保留独立数据，是否继续？')) return;
+        await customAppStore.install(preview, { replace: Boolean(existing), permissions: preview.manifest.permissions });
+        await refreshCustomApps();
+        attachment.installed = true;
+        attachment.status = existing ? '自定义 App 已更新' : '自定义 App 已安装';
+      } catch (error) { state.ui.aiAssistant.attachmentError = error.message || '安装自定义 App 失败。'; }
+      render();
+    },
+    generateWidget: generateAssistantWidget,
+    discardWidgetProposal: () => {
+      state.ui.aiAssistant.pendingWidgetProposal = null;
+      state.ui.aiAssistant.widgetGenerationStatus = '';
+      state.ui.aiAssistant.lastResponseIntent = 'chat';
+      render();
+    },
+    connect: configureBuilderAssistant,
     apply: applyAssistantDraft,
     discard: discardAssistantDraft,
-    undo: undoAssistantDraft
+    undo: undoAssistantDraft,
+    move: position => {
+      state.ui.aiAssistant.position = position;
+    }
   });
+}
+
+async function configureBuilderAssistant({ providerId, apiKey, model, baseUrl }) {
+  const profileId = 'builder-assistant';
+  state.ui.aiAssistant.connectionDraft = { providerId, model, baseUrl };
+  state.ui.aiAssistant.connectionApiKey = apiKey;
+  state.ui.aiAssistant.connectionStatus = '正在连接并测试...';
+  state.ui.aiAssistant.open = true;
+  state.ui.aiAssistant.panelView = 'connection';
+  render();
+  try {
+    await configureAiProvider(state.config, { profileId, providerId, apiKey, model, baseUrl });
+    const result = await testAiProvider(state.config, { profileId, providerId });
+    state.config.aiAssistant = {
+      ...state.config.aiAssistant,
+      enabled: true,
+      providerId,
+      profileId,
+      model,
+      baseUrl
+    };
+    state.ui.aiAssistant.connectionDraft = null;
+    state.ui.aiAssistant.connectionApiKey = '';
+    state.ui.aiAssistant.connectionStatus = result.answer || '连接成功，可以返回对话开始使用。';
+    persist('AI 搭建助手接口已连接。');
+  } catch (error) {
+    state.ui.aiAssistant.connectionStatus = error.message || '连接失败，请检查 API Key、模型名称和接口地址。';
+  }
+  render();
 }
 
 async function refreshStartupHealth() {
@@ -641,7 +964,10 @@ function setStep(stepId) {
 
 function getPanelHtml() {
   if (state.activeStep === 'appearance') return renderAppearancePanel(state.config, state.ui);
-  if (state.activeStep === 'save') return renderPreviewActions(state.config, state.ui);
+  if (state.activeStep === 'save') return renderPreviewActions(state.config, {
+    ...state.ui,
+    customApps: state.phone.customApps
+  });
   return renderAppSelectionPanel(state.config, {
     ...state.ui,
     runtimeCapabilities,
@@ -807,6 +1133,10 @@ function bindPanel(root) {
     updatePath,
     updatePhoneState,
     toggleCustomAppGuide: () => { state.ui.customAppGuideOpen = !state.ui.customAppGuideOpen; render(); },
+    toggleAdvancedSettings: () => {
+      state.ui.advancedSettingsOpen = !state.ui.advancedSettingsOpen;
+      render();
+    },
     setCustomAppGuideStatus: message => { state.ui.statusMessage = message; render(); },
     inspectCustomApp: async file => {
       try {
@@ -851,31 +1181,12 @@ function bindPanel(root) {
       render();
     },
     openAiAssistantConfig: () => {
-      state.ui.appConfigId = 'ai-assistant';
+      state.ui.appConfigId = null;
+      state.ui.aiAssistant.open = true;
+      state.ui.aiAssistant.panelView = 'connection';
       render();
     },
-    configureAiAssistant: async ({ providerId, apiKey, model, baseUrl }) => {
-      const profileId = 'builder-assistant';
-      state.ui.aiAssistant.connectionDraft = { providerId, model, baseUrl };
-      state.ui.aiAssistant.connectionStatus = '正在连接并测试...';
-      try {
-        await configureAiProvider(state.config, { profileId, providerId, apiKey, model, baseUrl });
-        const result = await testAiProvider(state.config, { profileId, providerId });
-        state.config.aiAssistant = {
-          enabled: true,
-          providerId,
-          profileId,
-          model,
-          baseUrl
-        };
-        state.ui.aiAssistant.connectionDraft = null;
-        state.ui.aiAssistant.connectionStatus = result.answer || '连接成功，可以开始使用。';
-        persist('AI 搭建助手接口已连接。');
-      } catch (error) {
-        state.ui.aiAssistant.connectionStatus = error.message || '连接失败，请检查 API Key、模型名称和接口地址。';
-      }
-      render();
-    },
+    configureAiAssistant: configureBuilderAssistant,
     openPhoneApp,
     selectCharacter,
     openCharacterContext: (appId, characterId) => {
@@ -1445,6 +1756,24 @@ function bindPanel(root) {
       window.open(getStandaloneUrl(), '_blank', 'noopener');
       render();
     },
+    downloadStandaloneHtml: async () => {
+      try {
+        state.ui.exportState = { status: 'generating', message: '正在生成单 HTML 小手机…' };
+        render();
+        const result = await createStandalonePhoneHtml(state.config);
+        downloadStandalonePhoneHtml(result);
+        state.ui.exportState = {
+          status: 'success',
+          message: `已下载 ${result.filename}（${(result.size / 1024 / 1024).toFixed(1)} MB）。可直接双击打开。`
+        };
+      } catch (error) {
+        state.ui.exportState = {
+          status: 'error',
+          message: error.message || '生成失败，请刷新后重试。'
+        };
+      }
+      render();
+    },
     install: async () => {
       const result = await installPwa();
       state.ui.installAvailable = isPwaInstallAvailable();
@@ -1562,6 +1891,23 @@ function createPhoneHandlers() {
       if (target === 'character') state.phone.characterView = 'list';
       render({ keepPhone: true });
     },
+    reset: async () => {
+      const confirmed = window.confirm(
+        '确定重置整台小手机吗？\n\n角色、聊天、记忆、日记、主题、布局和服务配置都会被清除。系统会先自动创建一份本机备份。'
+      );
+      if (!confirmed) return;
+      try {
+        await createConfigBackup(state.config);
+        state.config = resetConfig();
+        state.phone.currentApp = 'home';
+        state.phone.characterView = 'list';
+        state.phone.chatView = 'list';
+        state.ui.statusMessage = '小手机已重置，重置前的备份仍保存在本机。';
+      } catch (error) {
+        state.ui.statusMessage = error.message || '创建重置前备份失败，已取消重置。';
+      }
+      render({ keepPhone: true });
+    },
     dismissPhoneSetup: () => {
       setPath(state.config, 'meta.phoneSetup.dismissed', true);
       persist('已收起开始使用提示。');
@@ -1578,6 +1924,7 @@ function createPhoneHandlers() {
         state.phone.chatCharacterId = characterId || state.config.character.id;
         state.phone.chatView = 'conversation';
       }
+      if (appId === 'settings') state.phone.settingsPage = 'categories';
       render({ keepPhone: true });
     },
     markPhoneSetup: key => {
@@ -1638,6 +1985,7 @@ function createPhoneHandlers() {
         state.phone.chatView = 'list';
         state.phone.chatSessionDeleteConfirmId = null;
       }
+      if (appId === 'settings') state.phone.settingsPage = 'categories';
       render({ keepPhone: true });
     },
     goHome: () => {
@@ -1650,13 +1998,19 @@ function createPhoneHandlers() {
     },
     downloadStandaloneHtml: async () => {
       try {
-        state.ui.statusMessage = '正在打包本地 HTML 小手机…';
+        state.ui.exportState = { status: 'generating', message: '正在生成单 HTML 小手机…' };
         render();
-        const archive = await createStandalonePhoneArchive(state.config);
-        downloadStandalonePhoneArchive(archive);
-        state.ui.statusMessage = `已下载 ${archive.filename}，共 ${archive.fileCount} 个文件。`;
+        const result = await createStandalonePhoneHtml(state.config);
+        downloadStandalonePhoneHtml(result);
+        state.ui.exportState = {
+          status: 'success',
+          message: `已下载 ${result.filename}（${(result.size / 1024 / 1024).toFixed(1)} MB）。可直接双击打开。`
+        };
       } catch (error) {
-        state.ui.statusMessage = error.message || '本地 HTML 导出失败，请检查网络后重试。';
+        state.ui.exportState = {
+          status: 'error',
+          message: error.message || '生成失败，请刷新后重试。'
+        };
       }
       render();
     },
@@ -1689,10 +2043,18 @@ function render(options = {}) {
     if (!keepPhone || !document.getElementById('lovePhoneOS')) {
       app.innerHTML = `
         <main class="standalone-phone-shell">
+          ${phonePreviewMode ? '<button class="standalone-return-button" type="button" data-return-studio aria-label="返回小手机工坊"><span aria-hidden="true">‹</span>返回工坊</button>' : ''}
           <div id="lovePhoneOS"></div>
         </main>
         <div id="globalStorageNotice" class="global-storage-notice" role="alert" hidden></div>
       `;
+    }
+    const returnButton = app.querySelector('[data-return-studio]');
+    if (returnButton && !returnButton.dataset.bound) {
+      returnButton.dataset.bound = 'true';
+      returnButton.addEventListener('click', () => {
+        location.href = getStudioUrl(location, 'save');
+      });
     }
     renderLovePhoneOS(document.getElementById('lovePhoneOS'), state.config, state.phone, phoneHandlers);
     return;
@@ -1701,19 +2063,25 @@ function render(options = {}) {
   if (!keepPhone) {
     app.innerHTML = `
       <main class="studio-shell">
-        <section class="builder-pane">
+        <section class="builder-pane ${state.ui.aiAssistant.draftBase ? 'has-ai-draft' : ''}">
           <header class="studio-header">
             <p class="eyebrow">LovePhone Studio｜小手机工坊</p>
-            <h1>先选功能，再生成小手机</h1>
-            <p>角色、聊天和设置是必带能力；其他功能先作为可选项。点开配置后，右侧手机会直接进入对应 App。</p>
+            <h1>三步完成你的专属小手机</h1>
+            <p>选择 App、设计外观，然后下载。所有修改会自动保存，右侧始终是成品预览。</p>
           </header>
           ${renderStepNav()}
-          <div class="panel-host">
+          <div class="panel-host" ${state.ui.aiAssistant.draftBase ? 'inert aria-disabled="true"' : ''}>
             ${getPanelHtml()}
           </div>
           ${state.config.aiAssistant?.enabled ? renderAiAssistantPanel(state.config, state.ui.aiAssistant) : ''}
         </section>
         <aside class="preview-pane">
+          ${state.ui.aiAssistant.draftBase ? `
+            <div class="ai-preview-status" role="status">
+              <strong>AI 预览中</strong>
+              <span>修改尚未保存，可在左侧应用或撤销。</span>
+            </div>
+          ` : ''}
           <div id="lovePhoneOS"></div>
         </aside>
       </main>

@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { buildPhoneRuntime } from './build-phone-runtime.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'dist');
@@ -47,6 +48,7 @@ for (const item of ['assets', 'src']) {
 for (const item of ['index.html', 'manifest.webmanifest', 'sw.js']) {
   await cp(path.join(root, item), path.join(output, item));
 }
+await buildPhoneRuntime({ root, output: path.join(output, 'assets', 'generated') });
 await writeFile(
   path.join(output, 'runtime-config.js'),
   `globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = Object.freeze(${JSON.stringify(runtimeConfig)});\n`,

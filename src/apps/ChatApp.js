@@ -263,6 +263,23 @@ function renderQuickReplies(config, generating) {
     </div>`;
 }
 
+function scrollChatToLatest(container) {
+  const scroll = () => {
+    const body = container.querySelector('[data-chat-body]');
+    if (body) body.scrollTop = body.scrollHeight;
+  };
+
+  scroll();
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    globalThis.requestAnimationFrame(() => {
+      scroll();
+      globalThis.requestAnimationFrame(scroll);
+    });
+  } else {
+    globalThis.setTimeout?.(scroll, 0);
+  }
+}
+
 function appendStreamingRow(container, avatar) {
   const body = container.querySelector('[data-chat-body]');
   const row = document.createElement('div');
@@ -277,7 +294,7 @@ function appendStreamingRow(container, avatar) {
   bubble.append(text);
   row.append(image, bubble);
   body?.append(row);
-  if (body) body.scrollTop = body.scrollHeight;
+  scrollChatToLatest(container);
   return { row, text, body };
 }
 
@@ -757,6 +774,7 @@ export const ChatApp = {
       saveMessages(nextMessages, { noRender: true });
       const body = container.querySelector('[data-chat-body]');
       if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
+      scrollChatToLatest(container);
       await startGeneration(nextMessages);
     };
 
@@ -801,6 +819,7 @@ export const ChatApp = {
         saveMessages(nextMessages, { noRender: true });
         const body = container.querySelector('[data-chat-body]');
         if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
+        scrollChatToLatest(container);
         await startGeneration(nextMessages);
       });
     });
@@ -876,7 +895,6 @@ export const ChatApp = {
       speechSessions.get(key)?.stop();
     });
 
-    const body = container.querySelector('[data-chat-body]');
-    if (body) body.scrollTop = body.scrollHeight;
+    scrollChatToLatest(container);
   }
 };

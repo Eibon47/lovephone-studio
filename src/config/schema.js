@@ -171,12 +171,22 @@ function mergeAiProviders(baseProviders, sourceProviders = {}) {
 function normalizeAiAssistant(source = {}) {
   const validIds = new Set(AI_PROVIDER_CATALOG.map(provider => provider.id));
   const providerId = validIds.has(source.providerId) ? source.providerId : '';
+  const brief = source.designBrief && typeof source.designBrief === 'object' ? source.designBrief : {};
+  const briefItems = value => Array.isArray(value)
+    ? [...new Set(value.map(item => String(item || '').trim().slice(0, 120)).filter(Boolean))].slice(0, 20)
+    : [];
   return {
     enabled: Boolean(source.enabled),
     providerId,
     profileId: 'builder-assistant',
     model: typeof source.model === 'string' ? source.model.trim().slice(0, 160) : '',
-    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl.trim().slice(0, 300) : ''
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl.trim().slice(0, 300) : '',
+    designBrief: {
+      preferences: briefItems(brief.preferences),
+      avoid: briefItems(brief.avoid),
+      decisions: briefItems(brief.decisions),
+      updatedAt: typeof brief.updatedAt === 'string' ? brief.updatedAt.trim().slice(0, 40) : ''
+    }
   };
 }
 

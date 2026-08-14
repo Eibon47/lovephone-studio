@@ -81,3 +81,18 @@ test('code widgets render in a no-origin sandbox with network-blocking CSP', () 
   assert.match(html, /lovephone-widget/);
   assert.doesNotMatch(html, /喜欢雨天/);
 });
+
+test('code widgets expose only explicitly bound local assets', () => {
+  const codeConfig = structuredClone(config);
+  codeConfig.theme.customization.widgets = [{
+    id: 'asset-card', name: '素材卡', enabled: true, mode: 'code', templateId: 'custom',
+    layout: { x: 0, y: 0, w: 2, h: 2 },
+    style: { background: '#ffffff', text: '#111111', accent: '#22aa77', radius: 12 },
+    assets: { cover: 'data:image/webp;base64,LOCAL_ONLY' },
+    code: { html: '<img data-cover>', css: '', js: "document.querySelector('[data-cover]').src=widget.asset('cover')", dataPermissions: [], actionPermissions: [] }
+  }];
+  const html = renderCustomWidgets(codeConfig, {});
+  assert.match(html, /asset:name/);
+  assert.match(html, /LOCAL_ONLY/);
+  assert.match(html, /Object\.hasOwn\(state\.assets,name\)/);
+});

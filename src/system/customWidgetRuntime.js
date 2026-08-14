@@ -2,7 +2,7 @@ import { activeCharacter } from '../apps/appData.js?v=app-config-40';
 import { primaryAnniversary } from '../services/anniversaryService.js?v=app-config-44';
 import { escapeHtml } from './html.js';
 import { safeUploadedImage } from './icons.js?v=app-config-61';
-import { validateCustomWidgetCode } from '../services/customizationModel.js?v=app-config-70';
+import { validateCustomWidgetCode } from '../services/customizationModel.js?v=app-config-100';
 
 function dataForSource(source, config, osState, now = new Date()) {
   if (source === 'time') {
@@ -165,6 +165,7 @@ function sandboxDocument(widget, data) {
     html: result.code.html,
     css: result.code.css,
     data,
+    assets: widget.assets || {},
     dataPermissions: permissions.dataPermissions || [],
     actionPermissions: permissions.actionPermissions || []
   };
@@ -178,6 +179,7 @@ const style=document.createElement('style');style.textContent=state.css;document
 const send=(action,target='')=>{if(state.actionPermissions.includes(action)){parent.postMessage({source:'lovephone-widget',widgetId:state.id,type:'action',action,target},'*')}};
 globalThis.widget=Object.freeze({
   data:name=>state.dataPermissions.includes(name)?state.data[name]??null:null,
+  asset:name=>typeof name==='string'&&Object.hasOwn(state.assets,name)?state.assets[name]:null,
   action:send,
   openApp:id=>send('openApp',id),openChat:id=>send('openChat',id||''),openAnniversary:()=>send('openAnniversary'),createDiary:()=>send('createDiary'),switchCharacter:id=>send('switchCharacter',id),
   music:Object.freeze({playPause:()=>send('musicPlayPause'),previous:()=>send('musicPrevious'),next:()=>send('musicNext')})

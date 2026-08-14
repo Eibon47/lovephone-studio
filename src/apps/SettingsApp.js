@@ -77,6 +77,41 @@ function settingsGroup(icon, title, subtitle, content, className = '') {
   `;
 }
 
+const SETTINGS_CATEGORIES = [
+  { id: 'runtime', icon: '⌂', title: '安装与运行', subtitle: '安装方式、运行环境与启动检查' },
+  { id: 'services', icon: '◎', title: 'AI 与在线服务', subtitle: '大模型、网易云音乐与天气' },
+  { id: 'appearance', icon: '◐', title: '外观与显示', subtitle: '字体、手机壳和整机主色' },
+  { id: 'apps', icon: '▦', title: 'App 与陪伴数据', subtitle: '自定义 App、记忆、日记与问候' },
+  { id: 'data', icon: '⇅', title: '备份与安全', subtitle: '备份、迁移和重置整台小手机' }
+];
+
+function renderSettingsCategories(config, osState = {}) {
+  const aiReady = Object.values(config.aiProviders?.profiles || {}).some(profile => profile?.model);
+  const categoryStatus = {
+    runtime: osState.installAvailable ? '可安装' : '浏览器运行',
+    services: aiReady || musicBaseUrl(config) ? '已配置' : '待配置',
+    appearance: '当前主题',
+    apps: `${(osState.customApps || []).length} 个扩展`,
+    data: `${Number(osState.storageStatus?.backupCount) || 0} 份备份`
+  };
+  return `<div class="settings-category-list">${SETTINGS_CATEGORIES.map(category => `
+    <button type="button" class="settings-category-row" data-settings-category="${category.id}">
+      <i>${category.icon}</i>
+      <span><strong>${category.title}</strong><small>${category.subtitle}</small></span>
+      <em>${categoryStatus[category.id]}</em><b>›</b>
+    </button>
+  `).join('')}</div>`;
+}
+
+function renderSettingsCategory(page, config, osState) {
+  if (page === 'runtime') return `${renderPhoneManagement(osState)}${renderRuntimeInfo(config, osState)}${renderStartupHealth(osState)}`;
+  if (page === 'services') return `${config.apps.settings.apiProfiles ? renderAISettings(config, osState) : ''}${renderMusicSettings(config, osState)}${renderWeatherSettings(config)}`;
+  if (page === 'appearance') return config.apps.settings.themeControls ? renderAppearanceSettings(config) : '<p class="settings-security-note">外观控制已在工坊中关闭。</p>';
+  if (page === 'apps') return `${renderCustomAppSettings(osState)}${renderMemorySettings(config)}${renderCompanionDataSettings(config)}`;
+  if (page === 'data') return `${renderDataSettings(config)}${renderDangerSettings()}`;
+  return renderSettingsCategories(config, osState);
+}
+
 function renderCustomAppSettings(osState = {}) {
   const apps = osState.customApps || [];
   return settingsGroup('▦', '自定义 App 管理', apps.length ? `已安装 ${apps.length} 个自定义 App` : '尚未安装自定义 App', apps.length
@@ -236,7 +271,7 @@ function renderMusicSettings(config, osState = {}) {
       placeholder: 'https://your-music-api.example',
       desc: builtInMusic
         ? '当前网站会自动使用 LovePhone 内置音乐服务；只有改用自己的服务时才需要填写。'
-        : '部署到 Netlify 后会自动使用内置音乐服务；本地预览可填写自己的兼容 HTTPS 地址。'
+        : '内测站会自动使用已配置的音乐服务；本地预览或开源部署可填写自己的兼容 HTTPS 地址。'
     })}
     ${settingToggle('apps.music.showRecommendations', '首页推荐', music.showRecommendations)}
     ${settingToggle('apps.music.showLyrics', '歌词入口', music.showLyrics)}
@@ -298,12 +333,14 @@ function renderDataSettings(config) {
   const enabledCount = Object.values(config.apps || {}).filter(item => item?.enabled).length;
   return settingsGroup('⇅', '数据与备份', `当前启用 ${enabledCount} 个 App`, `
     <div class="settings-data-summary">
-      <span><strong>本地配置</strong><small>角色、外观和服务设置保存在这台设备。</small></span>
+      <span><strong>本机数据</strong><small>角色、聊天、记忆、日记与外观保存在这台设备。</small></span>
       <b>已保存</b>
     </div>
     <div class="settings-data-actions">
-      <button type="button" data-settings-export>导出配置</button>
-      <label>导入配置<input type="file" accept="application/json,.json" data-settings-import /></label>
+      <button type="button" data-settings-backup>创建本机备份</button>
+      <button type="button" data-settings-restore>恢复最近备份</button>
+      <button type="button" data-settings-export>导出备份文件</button>
+      <label>导入备份文件<input type="file" accept="application/json,.json" data-settings-import /></label>
     </div>
   `);
 }
@@ -315,16 +352,24 @@ function renderPhoneManagement(osState = {}) {
     : '请在 Chrome、Edge 或 Safari 中安装到设备';
   return settingsGroup('⌂', '手机管理', installText, `
     <div class="settings-data-summary">
-      <span><strong>本地备份</strong><small>当前保留 ${backupCount} 份自动或手动备份</small></span>
-      <b>${backupCount ? '已保护' : '建议创建'}</b>
+      <span><strong>当前运行环境</strong><small>${globalThis.location?.protocol === 'file:' ? '本地 HTML，可离线打开' : '网页版本，可安装能力由浏览器决定'}</small></span>
+      <b>${globalThis.location?.protocol === 'file:' ? '本地文件' : '浏览器'}</b>
     </div>
     <div class="settings-data-actions settings-phone-actions">
-      <button type="button" data-settings-backup>创建备份</button>
-      <button type="button" data-settings-restore ${backupCount ? '' : 'disabled'}>恢复最近备份</button>
-      <button type="button" data-settings-install>安装小手机</button>
+      <button type="button" data-settings-install>安装到设备</button>
     </div>
     <p class="settings-security-note">所有内容默认保存在当前设备。更换设备或清理浏览器前，请先导出配置或创建备份。</p>
   `, backupCount ? 'is-connected' : 'needs-config');
+}
+
+function renderDangerSettings() {
+  return settingsGroup('!', '危险操作', '重置前会自动创建一份本机备份', `
+    <div class="settings-data-summary">
+      <span><strong>重置整台小手机</strong><small>会清除角色、聊天、记忆、日记、主题、布局和服务配置。</small></span>
+      <b>不可直接撤销</b>
+    </div>
+    <button class="settings-secondary-button settings-danger-button" type="button" data-settings-reset>重置整台小手机</button>
+  `, 'needs-config');
 }
 
 function renderRuntimeInfo(config, osState = {}) {
@@ -346,7 +391,7 @@ function renderRuntimeInfo(config, osState = {}) {
       <span><strong>AI 连接</strong><small>${online ? '网页版本的 API Key 只保存在当前浏览器会话，关闭浏览器后需重新填写。' : '本机版本可在当前设备中使用已连接的 AI 配置。'}</small></span>
       <b>${aiConnected ? '已连接' : aiModelSelected ? '待连接' : '待配置'}</b>
     </div>
-    <p class="settings-security-note">当前版本还没有账号和云同步。${config.apps?.settings?.exportImport ? '要换设备时，请导出 JSON 并在新设备导入；导出文件不会包含 API Key。' : '当前已关闭配置导出功能，请先在工坊中开启后再更换设备。'}</p>
+    <p class="settings-security-note">当前版本还没有账号和云同步。要换设备时，请导出备份文件并在新设备导入；备份文件不会包含 API Key。</p>
   `, aiConnected ? 'is-connected' : 'needs-config');
 }
 
@@ -393,6 +438,10 @@ export const SettingsApp = {
     const character = activeCharacter(config, osState);
     const avatar = getCharacterAvatar(character);
     const titleMap = { wechat: '我', qq: '设置', instagram: '设置和动态', x: '设置与隐私' };
+    const settingsPage = SETTINGS_CATEGORIES.some(category => category.id === osState.settingsPage)
+      ? osState.settingsPage
+      : 'categories';
+    const category = SETTINGS_CATEGORIES.find(item => item.id === settingsPage);
     const themePrelude = theme === 'wechat' ? `
       <div class="wechat-settings-profile">
         <img src="${avatar}" alt="" />
@@ -425,31 +474,28 @@ export const SettingsApp = {
       <section class="phone-screen phone-settings-app settings-layout-${theme}">
         ${renderStatusBar('chat-statusbar')}
         <header class="app-top">
-          <button class="chat-back" type="button" data-go-home aria-label="返回桌面">‹</button>
-          <h3>${escapeHtml(titleMap[theme] || app.name)}</h3>
+          <button class="chat-back" type="button" ${category ? 'data-settings-back aria-label="返回设置分类"' : 'data-go-home aria-label="返回桌面"'}>‹</button>
+          <h3>${escapeHtml(category?.title || titleMap[theme] || app.name)}</h3>
         </header>
-        ${themePrelude}
+        ${category ? '' : themePrelude}
         <div class="phone-settings-list">
-          ${renderPhoneManagement(osState)}
-          ${renderRuntimeInfo(config, osState)}
-          ${renderStartupHealth(osState)}
-          ${renderCustomAppSettings(osState)}
-          ${config.apps.settings.themeControls ? renderAppearanceSettings(config) : ''}
-          ${config.apps.settings.apiProfiles ? renderAISettings(config, osState) : ''}
-          ${renderMusicSettings(config, osState)}
-          ${renderWeatherSettings(config)}
-          ${renderMemorySettings(config)}
-          ${renderCompanionDataSettings(config)}
-          ${config.apps.settings.exportImport ? renderDataSettings(config) : ''}
+          ${renderSettingsCategory(settingsPage, config, osState)}
         </div>
       </section>
     `;
   },
 
   bind(container, config, handlers, osState = {}) {
-    container.querySelector('[data-settings-backup]')?.addEventListener('click', () => handlers.backup?.());
-    container.querySelector('[data-settings-restore]')?.addEventListener('click', () => handlers.restoreBackup?.());
+    container.querySelectorAll('[data-settings-category]').forEach(button => button.addEventListener('click', () => {
+      handlers.updatePhoneState?.({ settingsPage: button.dataset.settingsCategory });
+    }));
+    container.querySelector('[data-settings-back]')?.addEventListener('click', () => {
+      handlers.updatePhoneState?.({ settingsPage: 'categories' });
+    });
+    container.querySelectorAll('[data-settings-backup]').forEach(button => button.addEventListener('click', () => handlers.backup?.()));
+    container.querySelectorAll('[data-settings-restore]').forEach(button => button.addEventListener('click', () => handlers.restoreBackup?.()));
     container.querySelector('[data-settings-install]')?.addEventListener('click', () => handlers.install?.());
+    container.querySelector('[data-settings-reset]')?.addEventListener('click', () => handlers.reset?.());
     container.querySelector('[data-startup-health-check]')?.addEventListener('click', () => {
       handlers.checkStartupHealth?.();
     });

@@ -12,6 +12,14 @@ export function getStandaloneUrl(locationLike = globalThis.location) {
   return url.toString();
 }
 
+export function getStudioUrl(locationLike = globalThis.location, step = 'save') {
+  const url = new URL(locationLike.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('step', step);
+  return url.toString();
+}
+
 export function isPwaInstallAvailable() {
   return Boolean(deferredInstallPrompt);
 }

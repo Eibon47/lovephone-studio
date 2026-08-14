@@ -191,17 +191,39 @@ function renderCustomAppArea(uiState = {}) {
 
 function renderAppList(config, runtimeCapabilities = {}, uiState = {}) {
   const assistant = config.aiAssistant || {};
+  const visibleOptions = appOptions.filter(option => (
+    option.key !== 'music' || runtimeCapabilities.experimentalMusic !== false
+  ));
+  const selectedCount = visibleOptions.filter(option => isSelected(config, option)).length
+    + (uiState.customApps || []).filter(app => app.enabled !== false).length;
   return `
     <section class="panel-section">
       <div class="section-heading">
         <span>第一步</span>
         <h2>先选这台小手机要有哪些功能</h2>
-        <p>角色、聊天、设置是必须的；其他功能可以开关。点“配置”后，右侧手机会直接打开对应 App。</p>
+        <p>角色、聊天、设置是基础 App；其他功能可以随时开关。点“详细设置”，右侧会直接打开对应 App。</p>
       </div>
+      <div class="builder-step-summary"><strong>已选择 ${selectedCount} 个 App</strong><span>所有修改都会自动保存</span></div>
+      <div class="builder-tool-heading"><strong>工坊工具</strong><small>只在制作时使用，不会进入成品小手机</small></div>
+      <div class="companion-list app-picker-list builder-tool-list">
+        <div class="companion-row app-picker-row ai-assistant-picker-row">
+          <span class="companion-icon ai-tool-icon">AI</span>
+          <span class="companion-copy">
+            <strong>AI 搭建助手</strong>
+            <small>和你讨论设计想法，需要时生成可确认的修改预览。</small>
+          </span>
+          <div class="app-row-actions">
+            <label class="feature-switch" aria-label="${assistant.enabled ? '关闭 AI 搭建助手' : '启用 AI 搭建助手'}">
+              <input type="checkbox" data-ai-assistant-enabled ${assistant.enabled ? 'checked' : ''} />
+              <span class="feature-switch-track"></span>
+            </label>
+            <button type="button" data-config-ai-assistant>连接设置</button>
+          </div>
+        </div>
+      </div>
+      <div class="builder-list-heading"><strong>小手机 App</strong><small>基础 App 必带，其他 App 可自由选择</small></div>
       <div class="companion-list app-picker-list">
-        ${appOptions.filter(option => (
-          option.key !== 'music' || runtimeCapabilities.experimentalMusic !== false
-        )).map(option => {
+        ${visibleOptions.map(option => {
           const copy = copyFor(option);
           return `
             <div class="companion-row app-picker-row ${option.required ? 'is-required' : ''}">
@@ -219,27 +241,20 @@ function renderAppList(config, runtimeCapabilities = {}, uiState = {}) {
                       <span class="feature-switch-track"></span>
                     </label>
                   `}
-                <button type="button" data-config-app="${option.key}">配置</button>
+                <button type="button" data-config-app="${option.key}">详细设置</button>
               </div>
             </div>
           `;
         }).join('')}
-        <div class="companion-row app-picker-row ai-assistant-picker-row">
-          <span class="companion-icon"><img src="${iconMap.settings}" alt="" /></span>
-          <span class="companion-copy">
-            <strong>AI 搭建助手</strong>
-            <small>在工坊左侧生成美化与小组件草稿，不会出现在最终小手机里。</small>
-          </span>
-          <div class="app-row-actions">
-            <label class="feature-switch" aria-label="${assistant.enabled ? '关闭 AI 搭建助手' : '启用 AI 搭建助手'}">
-              <input type="checkbox" data-ai-assistant-enabled ${assistant.enabled ? 'checked' : ''} />
-              <span class="feature-switch-track"></span>
-            </label>
-            <button type="button" data-config-ai-assistant>接口</button>
-          </div>
-        </div>
       </div>
-      ${renderCustomAppArea(uiState)}
+      <section class="advanced-settings-section ${uiState.advancedSettingsOpen ? 'is-open' : ''}">
+        <button class="advanced-settings-toggle" type="button" data-toggle-advanced-settings aria-expanded="${Boolean(uiState.advancedSettingsOpen)}">
+          <span><strong>高级设置</strong><small>开发者扩展、自定义 App 与接口说明</small></span>
+          <span class="advanced-settings-meta">${(uiState.customApps || []).length ? `已安装 ${(uiState.customApps || []).length} 个` : '按需开启'}</span>
+          <b aria-hidden="true">⌄</b>
+        </button>
+        ${uiState.advancedSettingsOpen ? `<div class="advanced-settings-content">${renderCustomAppArea(uiState)}</div>` : ''}
+      </section>
       <div class="flow-actions">
         <button class="primary-action" type="button" data-next-step="appearance">下一步：美化</button>
       </div>
@@ -390,7 +405,7 @@ function renderSettingsConfig(config) {
     ${boolRow('apps.settings.apiProfiles', '启用 API 配置页', '允许用户保存全局 API 信息。', app.apiProfiles)}
     ${boolRow('apps.settings.perRoleApi', '允许角色独立 API', '不同角色可以选择不同 API 或模型。', app.perRoleApi)}
     ${boolRow('apps.settings.themeControls', '保留主题控制', '设置 App 内可以调字体、主色和手机壳。', app.themeControls)}
-    ${boolRow('apps.settings.exportImport', '保留导入导出', '允许用户备份和迁移小手机配置。', app.exportImport)}
+    <p class="settings-security-note">数据备份、恢复与重置是设置 App 的基础能力，会始终保留。</p>
     <div class="setting-group">
       <div class="setting-group-title">
         <strong>可用的 AI 服务商</strong>
@@ -464,6 +479,7 @@ export function renderAppSelectionPanel(config, uiState = {}) {
 }
 
 export function bindAppSelectionPanel(root, handlers) {
+  root.querySelector('[data-toggle-advanced-settings]')?.addEventListener('click', () => handlers.toggleAdvancedSettings?.());
   root.querySelector('[data-toggle-custom-app-guide]')?.addEventListener('click', () => handlers.toggleCustomAppGuide?.());
   root.querySelector('[data-copy-custom-app-agent-brief]')?.addEventListener('click', async () => {
     const value = root.querySelector('[data-custom-app-agent-brief]')?.value || '';

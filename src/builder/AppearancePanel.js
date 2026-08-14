@@ -190,7 +190,7 @@ function renderPhoneAppearance(config) {
         </div>
       </div>
 
-      <div class="flow-actions">
+      <div class="flow-actions sticky-flow-actions">
         <button type="button" data-next-step="apps">上一步</button>
         <button class="primary-action" type="button" data-appearance-page="apps">下一步：App 美化</button>
       </div>
@@ -203,6 +203,7 @@ function renderAppAppearance(config, selectedAppId) {
   const selectedApp = apps.find(app => app.id === selectedAppId) || apps[0];
   const selectedLook = selectedApp ? getAppLook(config, selectedApp.id) : null;
   const selectedIcon = selectedApp ? getAppIcon(config, selectedApp) : '';
+  const iconShapeClass = ` icon-shape-${config.theme.iconSet || 'soft'}`;
 
   return `
     <div class="beautify-page" data-beautify-page="apps">
@@ -215,7 +216,7 @@ function renderAppAppearance(config, selectedAppId) {
             role="tab"
             aria-selected="${selectedApp?.id === app.id}"
           >
-            <span class="beautify-app-icon"><img src="${escapeHtml(getAppIcon(config, app))}" alt="" /></span>
+            <span class="beautify-app-icon${iconShapeClass} ${/^data:image\//i.test(getAppIcon(config, app)) ? 'is-uploaded' : ''}"><img src="${escapeHtml(getAppIcon(config, app))}" alt="" /></span>
             <span>${escapeHtml(app.name)}</span>
           </button>
         `).join('')}
@@ -224,7 +225,7 @@ function renderAppAppearance(config, selectedAppId) {
       ${selectedApp ? `
         <article class="beautify-app-editor">
           <div class="beautify-app-editor-heading">
-            <span class="beautify-app-icon beautify-app-icon-large"><img src="${escapeHtml(selectedIcon)}" alt="" /></span>
+            <span class="beautify-app-icon beautify-app-icon-large${iconShapeClass} ${/^data:image\//i.test(selectedIcon) ? 'is-uploaded' : ''}"><img src="${escapeHtml(selectedIcon)}" alt="" /></span>
             <span>
               <small>正在美化</small>
               <strong>${escapeHtml(selectedApp.name)} App</strong>
@@ -237,7 +238,7 @@ function renderAppAppearance(config, selectedAppId) {
               <small>上传方形图片后，桌面和底部 Dock 会同步替换，并优先于整机图标套装。</small>
             </div>
             <div class="app-icon-uploader">
-              <span class="app-icon-preview"><img src="${escapeHtml(selectedIcon)}" alt="" /></span>
+              <span class="app-icon-preview${iconShapeClass} ${/^data:image\//i.test(selectedIcon) ? 'is-uploaded' : ''}"><img src="${escapeHtml(selectedIcon)}" alt="" /></span>
               <label class="beautify-upload-button">
                 上传图标
                 <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-app-icon-upload="${selectedApp.id}" />
@@ -285,7 +286,7 @@ function renderAppAppearance(config, selectedAppId) {
         </article>
       ` : ''}
 
-      <div class="flow-actions">
+      <div class="flow-actions sticky-flow-actions">
         <button type="button" data-appearance-page="phone">上一步：整机美化</button>
         <button class="primary-action" type="button" data-next-step="save">下一步：完成</button>
       </div>
@@ -305,10 +306,10 @@ export function renderAppearancePanel(config, ui = {}) {
           ? '先统一调整整台小手机的样式、图标和桌面小组件。'
           : '再选择一个 App，单独设计它自己的界面。'}</p>
       </div>
-      <div class="beautify-package-toolbar">
-        <span>可视化美化</span>
-        <button type="button" data-open-custom="packages">导入 / 导出主题包</button>
-      </div>
+      <details class="beautify-package-toolbar advanced-customization">
+        <summary>高级自定义</summary>
+        <button type="button" data-open-custom="packages">开发者主题包与自定义代码</button>
+      </details>
       ${renderAppearanceTabs(activePage)}
       ${activePage === 'phone'
         ? renderPhoneAppearance(config)

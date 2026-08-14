@@ -879,6 +879,11 @@ function normalizeWidget(value, index) {
   const style = objectValue(source.style);
   const rawCode = objectValue(source.code);
   const codeResult = validateCustomWidgetCode(rawCode);
+  const assets = Object.fromEntries(Object.entries(objectValue(source.assets)).slice(0, 8).flatMap(([name, image]) => {
+    const safeName = SAFE_ID.test(name) ? name : '';
+    const safeImage = imageValue(image);
+    return safeName && safeImage ? [[safeName, safeImage]] : [];
+  }));
   const templateId = CUSTOM_WIDGET_TEMPLATE_IDS.has(source.templateId) ? source.templateId : 'custom';
   return {
     id: idValue(source.id, `custom-widget-${index + 1}`),
@@ -891,6 +896,7 @@ function normalizeWidget(value, index) {
     action: CUSTOM_WIDGET_ACTIONS.includes(source.action) ? source.action : 'none',
     actionTarget: idValue(source.actionTarget),
     image: imageValue(source.image),
+    assets,
     prefix: stringValue(source.prefix, '', 40),
     suffix: stringValue(source.suffix, '', 40),
     layout: {

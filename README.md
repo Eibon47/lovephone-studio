@@ -40,7 +40,7 @@ npm run web
 node server/ai-bridge.mjs
 ```
 
-然后打开：
+`npm run web` 会同时启动网页和本机 AI 桥接。然后打开：
 
 ```text
 http://127.0.0.1:5177/

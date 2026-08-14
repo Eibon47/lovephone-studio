@@ -36,3 +36,18 @@ test('CloudBase gateways reject another site even when it knows the endpoint', a
   assert.equal(ai.headers['access-control-allow-origin'], undefined);
   assert.equal(music.headers['access-control-allow-origin'], undefined);
 }));
+
+test('CloudBase AI gateway rejects secret-bearing text attachments', async () => withAllowedOrigin(async () => {
+  const result = await aiGateway.main({
+    httpMethod: 'POST', headers: { origin: allowed },
+    body: JSON.stringify({
+      action: 'chat', providerId: 'deepseek', apiKey: 'test-key', model: 'test-model',
+      system: '只做测试', messages: [{ role: 'user', content: '检查附件' }],
+      attachments: [{ name: 'secret.txt', type: 'text/plain', text: 'cookie=private-session-value' }]
+    })
+  });
+  assert.equal(result.statusCode, 400);
+  const body = JSON.parse(result.body);
+  assert.match(body.error, /密钥、密码或登录凭证/);
+  assert.doesNotMatch(body.error, /private-session-value/);
+}));
