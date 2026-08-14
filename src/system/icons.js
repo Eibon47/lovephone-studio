@@ -1,17 +1,26 @@
 export const assetBase = 'assets/theme-fantasy';
 
+const exportedIconAssets = globalThis.__LOVE_PHONE_ICON_ASSETS__ || {};
+
+function builtInIcon(name) {
+  const embedded = exportedIconAssets[name];
+  return typeof embedded === 'string' && /^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(embedded)
+    ? embedded
+    : `${assetBase}/ui-icons/${name}.png`;
+}
+
 export const iconMap = {
-  heart: `${assetBase}/ui-icons/heart.png`,
-  chat: `${assetBase}/ui-icons/chat.png`,
-  character: `${assetBase}/ui-icons/people.png`,
-  memory: `${assetBase}/ui-icons/sparkle.png`,
-  music: `${assetBase}/ui-icons/music.png`,
-  diary: `${assetBase}/ui-icons/diary.png`,
-  anniversary: `${assetBase}/ui-icons/clock.png`,
-  goodnight: `${assetBase}/ui-icons/moon.png`,
-  sprout: `${assetBase}/ui-icons/sprout.png`,
-  moon: `${assetBase}/ui-icons/moon.png`,
-  settings: `${assetBase}/ui-icons/bell.png`
+  heart: builtInIcon('heart'),
+  chat: builtInIcon('chat'),
+  character: builtInIcon('people'),
+  memory: builtInIcon('sparkle'),
+  music: builtInIcon('music'),
+  diary: builtInIcon('diary'),
+  anniversary: builtInIcon('clock'),
+  goodnight: builtInIcon('moon'),
+  sprout: builtInIcon('sprout'),
+  moon: builtInIcon('moon'),
+  settings: builtInIcon('bell')
 };
 
 export function safeUploadedImage(value) {

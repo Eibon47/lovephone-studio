@@ -243,7 +243,7 @@ export function renderCustomWidgets(config, osState) {
               style="${styleText}"
             >
               <span class="custom-widget-label">${escapeHtml(widget.name)}</span>
-              ${contentForWidget(widget, data)}
+              <span class="custom-widget-body">${contentForWidget(widget, data)}</span>
             </button>`}
           </div>
         </div>

@@ -14,13 +14,16 @@ test('standalone HTML contains inline runtime, styles and isolated phone config'
     customApps: [],
     css: '.phone{color:red}',
     vendor: 'globalThis.GridStack={};',
-    runtime: 'document.body.dataset.ready="yes";'
+    runtime: 'document.body.dataset.ready="yes";',
+    iconAssets: { chat: 'data:image/png;base64,INLINE_CHAT_ICON' }
   });
   assert.match(html, /phone-test-id/);
   assert.match(html, /小满的本地小手机/);
   assert.match(html, /<style>\.phone\{color:red\}<\/style>/);
   assert.match(html, /<script type="module">document\.body/);
   assert.match(html, /globalThis\.GridStack/);
+  assert.match(html, /__LOVE_PHONE_ICON_ASSETS__/);
+  assert.match(html, /INLINE_CHAT_ICON/);
   assert.doesNotMatch(html, /src="src\/main\.js/);
   assert.doesNotMatch(html, /runtime-config\.js/);
 });

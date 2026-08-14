@@ -4,11 +4,11 @@ import { getCustomAppStore } from '../storage/customAppStore.js';
 const RUNTIME_JS = 'assets/generated/phone-runtime.js';
 const RUNTIME_CSS = 'assets/generated/phone-runtime.css';
 const RUNTIME_VENDOR = 'assets/generated/phone-vendor.js';
-const ICON_PATHS = [
+const ICON_NAMES = [
   'bell', 'camera', 'cat', 'chat', 'clock', 'cloud', 'crown', 'diary', 'dragon', 'empty',
   'fire', 'flower', 'forbid', 'fox', 'ghost', 'globe', 'handshake', 'heart', 'ice', 'letter',
   'moon', 'music', 'people', 'pin', 'relationship', 'sparkle', 'sprout', 'sword', 'tag', 'thought'
-].map(name => `assets/theme-fantasy/ui-icons/${name}.png`);
+];
 const MAX_EXPORT_BYTES = 48 * 1024 * 1024;
 
 function safeFileName(value, fallback = 'lovephone') {
@@ -57,17 +57,16 @@ function removePrivateRuntimeData(config) {
   return copy;
 }
 
-async function inlineRuntimeAssets(source, fetchImpl) {
-  let output = source;
-  const entries = await Promise.all(ICON_PATHS.map(async path => {
+async function loadIconAssets(fetchImpl) {
+  const entries = await Promise.all(ICON_NAMES.map(async name => {
+    const path = `assets/theme-fantasy/ui-icons/${name}.png`;
     const bytes = await fetchBytes(path, fetchImpl);
-    return [path, `data:${mimeFor(path)};base64,${bytesToBase64(bytes)}`];
+    return [name, `data:${mimeFor(path)};base64,${bytesToBase64(bytes)}`];
   }));
-  for (const [path, dataUrl] of entries) output = output.split(path).join(dataUrl);
-  return output;
+  return Object.fromEntries(entries);
 }
 
-function buildHtml({ title, id, config, customApps, css, vendor = '', runtime }) {
+function buildHtml({ title, id, config, customApps, css, vendor = '', runtime, iconAssets = {} }) {
   const exportApps = customApps.map(app => ({
     id: app.id,
     permissions: app.permissions || [],
@@ -88,6 +87,7 @@ function buildHtml({ title, id, config, customApps, css, vendor = '', runtime })
     globalThis.__LOVE_PHONE_RUNTIME_CONFIG__ = Object.freeze({ aiGatewayUrl: '', musicGatewayUrl: '' });
     globalThis.__LOVE_PHONE_EXPORT__ = ${scriptJson({ formatVersion: 1, id, config })};
     globalThis.__LOVE_PHONE_EXPORT_APPS__ = ${scriptJson({ formatVersion: 1, apps: exportApps })};
+    globalThis.__LOVE_PHONE_ICON_ASSETS__ = Object.freeze(${scriptJson(iconAssets)});
   </script>
   <script>${vendor.replace(/<\/script/gi, '<\\/script')}</script>
   <script type="module">${runtime.replace(/<\/script/gi, '<\\/script')}</script>
@@ -98,14 +98,11 @@ function buildHtml({ title, id, config, customApps, css, vendor = '', runtime })
 export async function createStandalonePhoneHtml(config, fetchImpl = globalThis.fetch.bind(globalThis)) {
   const normalized = removePrivateRuntimeData(normalizeConfig(config));
   const customApps = await getCustomAppStore().exportApps().catch(() => []);
-  const [runtimeText, cssText, vendor] = await Promise.all([
+  const [runtime, css, vendor, iconAssets] = await Promise.all([
     fetchBytes(RUNTIME_JS, fetchImpl).then(bytes => new TextDecoder().decode(bytes)),
     fetchBytes(RUNTIME_CSS, fetchImpl).then(bytes => new TextDecoder().decode(bytes)),
-    fetchBytes(RUNTIME_VENDOR, fetchImpl).then(bytes => new TextDecoder().decode(bytes))
-  ]);
-  const [runtime, css] = await Promise.all([
-    inlineRuntimeAssets(runtimeText, fetchImpl),
-    inlineRuntimeAssets(cssText, fetchImpl)
+    fetchBytes(RUNTIME_VENDOR, fetchImpl).then(bytes => new TextDecoder().decode(bytes)),
+    loadIconAssets(fetchImpl)
   ]);
   const html = buildHtml({
     title: normalized.meta?.title,
@@ -114,7 +111,8 @@ export async function createStandalonePhoneHtml(config, fetchImpl = globalThis.f
     customApps,
     css,
     vendor,
-    runtime
+    runtime,
+    iconAssets
   });
   const size = new TextEncoder().encode(html).byteLength;
   if (size > MAX_EXPORT_BYTES) {

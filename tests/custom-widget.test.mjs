@@ -53,6 +53,23 @@ test('custom widgets render escaped content and declarative actions', () => {
   assert.match(html, /&lt;我的时间&gt;/);
   assert.doesNotMatch(html, /<我的时间>/);
   assert.match(html, /data-custom-widget-index="0"/);
+  assert.match(html, /class="custom-widget-body"/);
+  assert.match(html, /gs-w="2"/);
+  assert.match(html, /gs-h="2"/);
+});
+
+test('image widgets keep their image inside the resizable content area', () => {
+  const imageConfig = structuredClone(config);
+  imageConfig.theme.customization.widgets = [{
+    id: 'wide-photo', name: 'Wide photo', enabled: true, templateId: 'photo', type: 'image',
+    dataSource: 'time', action: 'none', actionTarget: '', prefix: '', suffix: '',
+    image: 'data:image/png;base64,AAAA', layout: { x: 0, y: 0, w: 5, h: 4 },
+    style: { background: '#ffffff', text: '#111111', accent: '#22aa77', radius: 12 }
+  }];
+  const html = renderCustomWidgets(imageConfig, {});
+  assert.match(html, /gs-w="5"/);
+  assert.match(html, /gs-h="4"/);
+  assert.match(html, /class="custom-widget-body"><span class="custom-template-photo">/);
 });
 
 test('code widgets render in a no-origin sandbox with network-blocking CSP', () => {
