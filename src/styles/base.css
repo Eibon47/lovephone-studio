@@ -127,7 +127,25 @@ img {
   width: min(375px, calc((100dvh - 48px) * 0.462), calc(100vw - 40px));
 }
 
-@media (display-mode: standalone) {
+/* A finished phone should use the physical phone screen, while desktop keeps
+   the framed preview. The coarse-pointer guard avoids changing narrow desktop windows. */
+@media (max-width: 600px) and (pointer: coarse) {
+  .standalone-phone-shell {
+    min-height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+    background: #fffaf0;
+  }
+
+  .standalone-phone-shell #lovePhoneOS,
+  .standalone-phone-shell .os-shell {
+    width: 100%;
+    height: 100dvh;
+  }
+
+}
+
+@media (display-mode: standalone) and (min-width: 601px) {
   .standalone-phone-shell {
     padding-top: max(18px, env(safe-area-inset-top));
     padding-bottom: max(18px, env(safe-area-inset-bottom));
@@ -214,6 +232,29 @@ p {
     height: auto;
     min-height: 100dvh;
     padding: 26px 16px 38px;
+  }
+}
+
+/* Touch tablets in landscape remain split-screen, but the preview no longer
+   collapses when browser chrome or split-screen leaves little vertical room. */
+@media (min-width: 981px) and (max-width: 1366px) and (pointer: coarse) {
+  .studio-shell {
+    grid-template-columns: minmax(320px, 42vw) minmax(420px, 1fr);
+  }
+
+  .builder-pane {
+    padding: 22px;
+  }
+
+  .preview-pane {
+    place-items: start center;
+    padding: 22px 16px 36px;
+    overflow: auto;
+  }
+
+  .preview-pane .phone-frame {
+    width: clamp(280px, calc((100dvh - 72px) * 0.462), 360px);
+    flex: 0 0 auto;
   }
 }
 

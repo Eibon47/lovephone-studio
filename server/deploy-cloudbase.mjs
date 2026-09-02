@@ -18,6 +18,11 @@ if (!/^[a-zA-Z0-9-]{3,80}$/.test(envId) || envId === 'your-cloudbase-environment
   throw new Error('cloudbaserc.local.json 中的 envId 尚未配置。');
 }
 
+const hostingPath = String(config.hostingPath || 'lovephone').trim().replace(/^\/+|\/+$/g, '');
+if (!/^[a-zA-Z0-9][a-zA-Z0-9/_-]{0,119}$/.test(hostingPath) || hostingPath.includes('..')) {
+  throw new Error('cloudbaserc.local.json 中的 hostingPath 不合法。');
+}
+
 function run(command, args) {
   const windows = process.platform === 'win32';
   const executable = windows ? process.env.ComSpec || 'cmd.exe' : command;
@@ -39,4 +44,5 @@ run('npm', ['test']);
 run('npm', ['run', 'web:build']);
 run('cloudbase', ['fn', 'deploy', 'ai-gateway', '--force', '--install-dependency', 'false', '--config-file', configArgument]);
 run('cloudbase', ['fn', 'deploy', 'wangyiyun66-gateway', '--force', '--install-dependency', 'true', '--config-file', configArgument]);
-run('cloudbase', ['hosting', 'deploy', 'dist', '-e', envId, '--enable-git-ignore']);
+run('cloudbase', ['hosting', 'deploy', 'dist', hostingPath, '-e', envId, '--enable-git-ignore']);
+console.log(`LovePhone 已部署到静态托管目录: /${hostingPath}/`);

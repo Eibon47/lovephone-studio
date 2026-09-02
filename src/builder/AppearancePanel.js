@@ -3,7 +3,7 @@ import { iconMap } from '../system/icons.js';
 import { fontStyles, phoneFrames } from '../system/options.js';
 import { escapeHtml } from '../system/html.js';
 import { APP_UI_THEMES, getAppIcon, getAppLook } from '../system/appAppearance.js?v=app-config-71';
-import { WIDGET_CATALOG } from '../system/widgetCatalog.js';
+import { WIDGET_CATALOG } from '../system/widgetCatalog.js?v=app-config-1';
 import {
   readOptimizedImage,
   readSquareImage
@@ -84,7 +84,6 @@ function renderWidgetDemo(widget) {
     calendar: '<small>星期四</small><b>23</b>',
     anniversary: '<i class="widget-demo-heart">♥</i><b>365<small>天</small></b>',
     characterStatus: '<i class="widget-demo-avatar">满</i><small>正在想你</small>',
-    dailyNote: '<b>“</b><small>今天也会陪着你</small>',
     mood: '<span class="widget-demo-bars"><i></i><i></i><i></i><i></i></span><small>这周心情</small>',
     quickActions: '<span class="widget-demo-actions"><i>✦</i><i>♪</i><i>＋</i><i>♡</i></span>'
   };
@@ -171,22 +170,11 @@ function renderPhoneAppearance(config) {
           <button class="chip custom-entry-chip" type="button" data-open-custom="desktop">+ 自定义桌面</button>
         </div>
         <div class="widget-config-list">
-          ${widgetOptions.map(widget => `
-            <article class="widget-config-row ${getPath(config, widget.path) ? 'active' : ''}">
-              ${renderWidgetDemo(widget)}
-              <div class="widget-config-copy">
-                <strong>${widget.name}</strong>
-                <small>${widget.desc} · ${widget.size}</small>
-              </div>
-              ${renderSwitch(widget.path, Boolean(getPath(config, widget.path)))}
-              ${renderImagePicker(widget, config)}
-              ${renderWidgetFields(widget, config)}
-            </article>
-          `).join('')}
           <button class="widget-config-row custom-widget-entry" type="button" data-open-custom="widgets">
             <span class="custom-entry-symbol">+</span>
-            <span><strong>自定义小组件</strong><small>选择数据来源、显示形式和点击动作。</small></span>
+            <span><strong>打开自由小组件编辑器</strong><small>模板、图层、属性、数据和动作都在同一个编辑器中完成。</small></span>
           </button>
+          <p class="beautify-helper">已添加 ${(config.theme.customization.widgets || []).filter(widget => widget.enabled).length} 个小组件。旧时钟、相框、唱片机等会自动转换为可编辑图层。</p>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
-import { cloneCustomization, DEFAULT_CUSTOMIZATION } from '../services/customizationModel.js';
+import { cloneCustomization, DEFAULT_CUSTOMIZATION } from '../services/customizationModel.js?v=app-config-104';
 
 export const defaultConfig = {
-  version: 1,
+  version: 6,
   meta: {
     title: '我的小手机',
     templateId: 'minimal-phone',
@@ -85,11 +85,6 @@ export const defaultConfig = {
         enabled: false,
         status: '正在想你',
         layout: { x: 0, y: 4, w: 4, h: 2 }
-      },
-      dailyNote: {
-        enabled: false,
-        text: '今天也会好好陪着你。',
-        layout: { x: 0, y: 6, w: 4, h: 2 }
       },
       mood: {
         enabled: false,
@@ -249,6 +244,37 @@ export const defaultConfig = {
       avoid: [],
       decisions: [],
       updatedAt: ''
+    }
+  },
+  companion: {
+    events: [],
+    timeline: [],
+    memoryCandidates: [],
+    followUps: [],
+    tasks: [],
+    notifications: [],
+    relationshipSignals: {},
+    proactive: {
+      defaults: {
+        enabled: true,
+        quietHours: { enabled: true, start: '23:00', end: '08:00' },
+        dailyLimit: 3,
+        suppressWhileUnanswered: true,
+        emotionFollowUp: true,
+        emotionFollowUpMinutes: 30,
+        morningGreeting: true,
+        nightGreeting: true,
+        diaryResponse: true,
+        anniversaryReminder: true
+      },
+      characterOverrides: {}
+    },
+    integrations: {
+      musicContext: false,
+      diaryCompanion: false,
+      anniversaryCompanion: false,
+      moodAwareGreetings: false,
+      relationshipDesktop: false
     }
   },
   model: {

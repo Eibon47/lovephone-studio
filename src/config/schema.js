@@ -1,8 +1,13 @@
-import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-95';
+import { cloneConfig, defaultConfig } from './defaultConfig.js?v=app-config-96';
 import { AI_PROVIDER_CATALOG, DEFAULT_AI_PROVIDERS } from './aiProviderCatalog.js?v=app-config-35';
 import { normalizeChatSessionData } from '../services/chatSessionService.js?v=app-config-95';
-import { normalizeCustomization } from '../services/customizationModel.js';
+import { normalizeCustomization } from '../services/customizationModel.js?v=app-config-104';
 import { normalizePhoneSetup } from '../services/phoneSetupService.js';
+import { normalizeCompanionState } from '../services/companionEventService.js';
+import { repairCharacterIds } from '../services/characterIdentityService.js';
+import { normalizeCompanionIntegrations, normalizeProactiveSettings } from '../services/companionPolicyService.js';
+import { normalizeMemoryEntry } from '../services/memoryRetrievalService.js';
+import { migrateLegacyBuiltinWidgets } from '../services/compositionWidgetModel.js?v=app-config-108';
 
 // Cache-bumped default schema keeps older saved phones compatible with new widgets.
 const componentKeys = ['chat', 'music', 'memory', 'diary', 'anniversary', 'goodnight'];
@@ -45,20 +50,6 @@ function mergeAppConfig(baseApp, sourceApp = {}) {
 function safeCharacterId(value, fallback) {
   const id = String(value || '').trim();
   return /^[a-zA-Z0-9_-]{3,80}$/.test(id) ? id : fallback;
-}
-
-function normalizeCharacterList(value) {
-  if (!Array.isArray(value)) return [];
-  const usedIds = new Set(['character-main']);
-  return value
-    .filter(item => item && typeof item === 'object')
-    .slice(0, 11)
-    .map((item, index) => {
-      let id = safeCharacterId(item.id, `character-extra-${index + 1}`);
-      if (usedIds.has(id)) id = `character-extra-${index + 1}`;
-      usedIds.add(id);
-      return { ...item, id };
-    });
 }
 
 function sanitizeAiProfileMap(value) {
@@ -130,6 +121,14 @@ function mergeTheme(baseTheme, sourceTheme = {}) {
         value: typeof sourceIcon.value === 'string' ? sourceIcon.value : ''
       }
     };
+  });
+
+  const legacyCustomization = Number(sourceTheme.customization?.version) < 3;
+  merged.customization = normalizeCustomization({
+    ...merged.customization,
+    widgets: legacyCustomization
+      ? migrateLegacyBuiltinWidgets(merged, merged.customization.widgets || [])
+      : merged.customization.widgets || []
   });
 
   return merged;
@@ -221,23 +220,49 @@ export function normalizeConfig(input) {
         ...sanitizeAiProfileMap(source.character?.aiProfiles)
       }
     },
-    characters: normalizeCharacterList(source.characters),
+    characters: Array.isArray(source.characters) ? source.characters : [],
     customApps: normalizeCustomApps(source.customApps),
     theme: mergeTheme(base.theme, source.theme || {}),
     components: { ...base.components, ...(source.components || {}) },
     apps: { ...base.apps },
     aiProviders: mergeAiProviders(base.aiProviders, source.aiProviders || {}),
     aiAssistant: normalizeAiAssistant(source.aiAssistant || {}),
+    companion: { ...base.companion },
     model: { ...base.model, ...(source.model || {}) },
     memory: { ...base.memory, ...(source.memory || {}) },
     voice: { ...base.voice, ...(source.voice || {}) }
   };
 
-  normalized.version = 4;
+  normalized.version = 6;
+  if (Number(source.version || 0) < 6 && source.theme?.appLayouts) {
+    normalized.theme.appLayouts = Object.fromEntries(Object.entries(normalized.theme.appLayouts || {}).map(([appId, layout]) => [appId, {
+      x: Math.min(11, Math.max(0, Math.round((Number(layout?.x) || 0) * 3))),
+      y: Math.max(0, Math.round((Number(layout?.y) || 0) * 3)),
+      w: Math.min(12, Math.max(2, Math.round((Number(layout?.w) || 1) * 3))),
+      h: Math.min(36, Math.max(2, Math.round((Number(layout?.h) || 2) * 3)))
+    }]));
+  }
+  normalized.theme.appLayouts = Object.fromEntries(Object.entries(normalized.theme.appLayouts || {}).map(([appId, value]) => {
+    const layout = value && typeof value === 'object' ? value : {};
+    const layoutY = Number(layout.y);
+    return [appId, {
+      x: Math.min(9, Math.max(0, Math.round(Number(layout.x) || 0))),
+      y: Math.min(282, Math.max(0, Math.round(Number.isFinite(layoutY) ? layoutY : 24))),
+      w: 3,
+      h: 6
+    }];
+  }));
   normalized.character.avatar = {
     ...base.character.avatar,
     ...(source.character?.avatar || {})
   };
+  const identityRepair = repairCharacterIds(normalized.character, normalized.characters);
+  normalized.character = identityRepair.main;
+  normalized.characters = identityRepair.characters;
+  normalized.meta.characterIdRepairs = identityRepair.repairs;
+  normalized.meta.characterIdRepairNotice = identityRepair.repairs.length
+    ? `已修复 ${identityRepair.repairs.length} 个重复角色编号。为避免聊天和记忆串联，修复后的角色从空白数据开始。`
+    : String(source.meta?.characterIdRepairNotice || '');
 
   appKeys.forEach(key => {
     normalized.apps[key] = mergeAppConfig(base.apps[key], source.apps?.[key]);
@@ -312,6 +337,28 @@ export function normalizeConfig(input) {
     normalized.character.id,
     ...normalized.characters.map(character => character.id)
   ]);
+  normalized.companion = normalizeCompanionState(
+    source.companion || base.companion,
+    [...characterIds],
+    normalized.character.id
+  );
+  normalized.companion.proactive = normalizeProactiveSettings(
+    source.companion?.proactive || base.companion.proactive,
+    [...characterIds]
+  );
+  normalized.companion.integrations = normalizeCompanionIntegrations(
+    source.companion?.integrations || base.companion.integrations
+  );
+  const integrationForTask = {
+    'diary-response': 'diaryCompanion',
+    'anniversary-reminder': 'anniversaryCompanion'
+  };
+  normalized.companion.tasks = normalized.companion.tasks.map(task => {
+    const integration = integrationForTask[task.type];
+    return integration && task.status === 'pending' && !normalized.companion.integrations[integration]
+      ? { ...task, status: 'cancelled', completedAt: new Date().toISOString(), error: '对应 App 联动尚未授权' }
+      : task;
+  });
   normalized.apps.character.activeCharacterId = characterIds.has(normalized.apps.character.activeCharacterId)
     ? normalized.apps.character.activeCharacterId
     : normalized.character.id;
@@ -329,12 +376,10 @@ export function normalizeConfig(input) {
   normalized.apps.chat.activeSessionIds = chatSessionData.activeSessionIds;
   normalized.apps.chat.messages = chatSessionData.messages;
   normalized.apps.memory.entries = Array.isArray(normalized.apps.memory.entries)
-    ? normalized.apps.memory.entries.map(entry => ({
+    ? normalized.apps.memory.entries.map(entry => normalizeMemoryEntry({
         ...entry,
-        characterId: characterIds.has(entry?.characterId)
-          ? entry.characterId
-          : normalized.character.id
-      }))
+        characterId: characterIds.has(entry?.characterId) ? entry.characterId : normalized.character.id
+      }, normalized.character.id))
     : [];
 
   delete normalized.theme.wallpaper;

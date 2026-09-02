@@ -1,9 +1,9 @@
 import { renderAppSelectionPanel, bindAppSelectionPanel } from './builder/AppSelectionPanel.js?v=app-config-86';
-import { renderAppearancePanel, bindAppearancePanel } from './builder/AppearancePanel.js?v=app-config-103';
-import { renderCustomizationDrawer } from './builder/CustomizationDrawer.js?v=app-config-84';
+import { renderAppearancePanel, bindAppearancePanel } from './builder/AppearancePanel.js?v=app-config-104';
+import { renderCustomizationDrawer } from './builder/CustomizationDrawer.js?v=app-config-106';
 import { renderAiAssistantPanel, bindAiAssistantPanel } from './builder/AiAssistantPanel.js?v=app-config-100';
 import { renderPreviewActions, bindPreviewActions } from './builder/PreviewActions.js?v=app-config-46';
-import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-103';
+import { renderLovePhoneOS } from './system/LovePhoneOS.js?v=app-config-105';
 import { getEnabledApps } from './system/appRegistry.js?v=app-config-96';
 import {
   createConfigBackup,
@@ -17,14 +17,14 @@ import {
   saveConfig,
   setStorageStatusListener,
   summarizeImportedConfig
-} from './storage/localConfigStore.js?v=app-config-94';
+} from './storage/localConfigStore.js?v=app-config-97';
 import {
   configureAiProvider,
   removeAiProfile,
   streamAiChat,
   testAiProvider
 } from './services/aiService.js?v=app-config-85';
-import { cloneConfig } from './config/defaultConfig.js?v=app-config-95';
+import { cloneConfig } from './config/defaultConfig.js?v=app-config-96';
 import {
   applyBuilderAssistantOperations,
   buildBuilderAssistantSystemPrompt,
@@ -32,14 +32,27 @@ import {
   createBuilderAssistantContext,
   parseBuilderAssistantResponse,
   parseWidgetGenerationResponse
-} from './services/builderAssistantService.js?v=app-config-100';
-import { roleProfileId } from './services/aiProfileScope.js?v=app-config-45';
+} from './services/builderAssistantService.js?v=app-config-102';
+import { resolveCharacterAiProfile, roleProfileId } from './services/aiProfileScope.js?v=app-config-45';
 import {
   enqueueAiProfileDelete,
   flushAiProfileDeletes
 } from './services/aiProfileCleanup.js?v=app-config-59';
 import { purgeCharacterData } from './services/characterDataService.js?v=app-config-59';
+import { importCharacterPackage as mergeCharacterPackage } from './services/characterPackageService.js';
+import { createUniqueCharacterId } from './services/characterIdentityService.js';
+import { clearIntegrationRecords } from './services/companionPolicyService.js';
+import {
+  recordCompanionEvent,
+  removeCompanionSource,
+  resolveMemoryCandidate
+} from './services/companionEventService.js';
 import { ensureCharacterChatSession } from './services/chatSessionService.js?v=app-config-95';
+import {
+  markAllCompanionNotificationsRead,
+  markCompanionNotificationRead,
+  processDueProactiveTasks
+} from './services/proactiveCompanionService.js';
 import {
   getStandaloneUrl,
   getStudioUrl,
@@ -63,7 +76,12 @@ import {
   normalizeCustomization,
   validateCustomCss,
   validateCustomWidgetCode
-} from './services/customizationModel.js?v=app-config-100';
+} from './services/customizationModel.js?v=app-config-104';
+import {
+  createCompositionElement,
+  createCompositionWidget,
+  normalizeCompositionWidget
+} from './services/compositionWidgetModel.js?v=app-config-108';
 import {
   createThemePackage,
   downloadThemePackage,
@@ -149,7 +167,10 @@ const state = {
     chatCharacterId: null,
     settingsPage: 'categories',
     runtimeCapabilities,
-    customApps: initialCustomApps
+    customApps: initialCustomApps,
+    widgetEditing: false,
+    widgetEditorWidgetId: '',
+    widgetEditorElementIds: []
   },
   ui: {
     statusMessage: '已加载上次的小手机配置。',
@@ -159,6 +180,7 @@ const state = {
     customEditor: null,
     customWidgetTab: 'templates',
     customWidgetIndex: 0,
+    customWidgetHistory: { past: [], future: [] },
     chatAppearanceTab: 'overall',
     chatAppearancePreview: 'list',
     characterAppearanceTab: 'overall',
@@ -204,6 +226,15 @@ const state = {
     storageStatus: getStorageStatusSnapshot()
   }
 };
+if (state.config.meta?.characterIdRepairs?.length) {
+  state.ui.statusMessage = state.config.meta.characterIdRepairNotice;
+  state.config.meta.characterIdRepairs = [];
+  state.config.meta.characterIdRepairNotice = '';
+  state.config = saveConfig(state.config, { suppressBackup: true });
+}
+let proactiveSyncTimer = null;
+let proactiveSyncing = false;
+let phoneNotificationPopupTimer = null;
 
 // The package archive and its private data live in IndexedDB. The config only
 // keeps desktop-facing metadata so old configurations remain compatible.
@@ -386,6 +417,73 @@ function persist(message = '已自动保存。', saveOptions = {}) {
   state.ui.statusMessage = message;
 }
 
+function widgetCollection() {
+  return state.config.theme.customization.widgets || [];
+}
+
+function snapshotWidgetHistory() {
+  const history = state.ui.customWidgetHistory;
+  history.past.push(JSON.stringify(widgetCollection()));
+  if (history.past.length > 50) history.past.shift();
+  history.future = [];
+}
+
+function restoreWidgetHistory(direction) {
+  const history = state.ui.customWidgetHistory;
+  const source = direction === 'undo' ? history.past : history.future;
+  const target = direction === 'undo' ? history.future : history.past;
+  if (!source.length) return false;
+  target.push(JSON.stringify(widgetCollection()));
+  state.config.theme.customization.widgets = JSON.parse(source.pop());
+  const widgets = widgetCollection();
+  state.ui.customWidgetIndex = Math.max(0, Math.min(state.ui.customWidgetIndex, widgets.length - 1));
+  state.phone.widgetEditorWidgetId = widgets[state.ui.customWidgetIndex]?.id || '';
+  state.phone.widgetEditorElementIds = [];
+  persist(direction === 'undo' ? '已撤销上一步。' : '已重做上一步。');
+  return true;
+}
+
+function selectedCompositionWidget() {
+  const widget = widgetCollection()[state.ui.customWidgetIndex];
+  return widget?.kind === 'composition' ? widget : null;
+}
+
+function normalizeSelectedComposition() {
+  const widgets = widgetCollection();
+  const index = state.ui.customWidgetIndex;
+  if (widgets[index]?.kind !== 'composition') return null;
+  widgets[index] = normalizeCompositionWidget(widgets[index], index);
+  return widgets[index];
+}
+
+function selectCompositionElements(widgetId, ids, options = {}) {
+  const index = widgetCollection().findIndex(widget => widget.id === widgetId);
+  if (index < 0) return;
+  state.ui.customWidgetIndex = index;
+  state.phone.widgetEditorWidgetId = widgetId;
+  state.phone.widgetEditorElementIds = [...new Set(ids || [])];
+  if (!options.noPhoneRender) render();
+}
+
+function commitCompositionFrames(widgetId, updates) {
+  const index = widgetCollection().findIndex(widget => widget.id === widgetId);
+  const widget = widgetCollection()[index];
+  if (!widget || widget.kind !== 'composition' || !updates?.length) return;
+  snapshotWidgetHistory();
+  updates.forEach(update => {
+    const element = widget.elements.find(item => item.id === update.id);
+    if (element && !element.locked) element.frame = { ...element.frame, ...update.frame };
+  });
+  state.ui.customWidgetIndex = index;
+  normalizeSelectedComposition();
+  persist('组件位置已自动保存。');
+  render();
+}
+
+function beginCustomWidgetLayoutEdit() {
+  snapshotWidgetHistory();
+}
+
 function renderGlobalStorageNotice() {
   const notice = document.getElementById('globalStorageNotice');
   if (!notice) return;
@@ -408,6 +506,185 @@ function updatePath(path, value, options = {}) {
 
 function updatePhoneState(patch) {
   state.phone = { ...state.phone, ...patch };
+  render({ keepPhone: true });
+}
+
+function emitCompanionEvent(event) {
+  state.config.companion = recordCompanionEvent(state.config, event);
+  state.config = saveConfig(state.config);
+  scheduleProactiveSync(40);
+}
+
+function removeCompanionEventSource(sourceApp, sourceId) {
+  state.config.companion = removeCompanionSource(state.config, sourceApp, sourceId);
+  state.config = saveConfig(state.config);
+}
+
+function handleMemoryCandidate(candidateId, status, overrides = {}) {
+  const result = resolveMemoryCandidate(state.config, candidateId, status, overrides);
+  state.config.companion = result.companion;
+  if (result.memoryEntry) {
+    const entries = state.config.apps.memory.entries || [];
+    if (!entries.some(item => item.sourceEventId === result.memoryEntry.sourceEventId)) {
+      state.config.apps.memory.entries = [result.memoryEntry, ...entries];
+    }
+  }
+  persist(status === 'accepted' ? '已加入角色记忆。' : '已忽略这条记忆建议。');
+  render({ keepPhone: true });
+}
+
+function openPhoneNotification(notificationId, appId, characterId) {
+  if (phoneNotificationPopupTimer) clearTimeout(phoneNotificationPopupTimer);
+  phoneNotificationPopupTimer = null;
+  state.config = markCompanionNotificationRead(state.config, notificationId);
+  state.phone.notificationCenterOpen = false;
+  state.phone.notificationPopupId = null;
+  state.phone.currentApp = appId || 'home';
+  if (appId === 'chat') {
+    const targetCharacterId = characterId || state.config.character.id;
+    state.config.apps.chat = ensureCharacterChatSession(state.config.apps.chat, targetCharacterId);
+    state.config.apps.character.activeCharacterId = targetCharacterId;
+    state.phone.chatCharacterId = targetCharacterId;
+    state.phone.chatView = 'conversation';
+    state.phone.chatSessionDeleteConfirmId = null;
+  }
+  if (appId === 'settings') state.phone.settingsPage = 'categories';
+  persist('消息已读。');
+  render({ keepPhone: true });
+}
+
+function showPhoneNotificationPopup(notificationId = null, duration = 5000) {
+  if (phoneNotificationPopupTimer) clearTimeout(phoneNotificationPopupTimer);
+  state.phone.notificationPopupId = notificationId;
+  state.phone.notificationCenterOpen = true;
+  phoneNotificationPopupTimer = setTimeout(() => {
+    phoneNotificationPopupTimer = null;
+    if (!state.phone.notificationCenterOpen) return;
+    state.phone.notificationCenterOpen = false;
+    state.phone.notificationPopupId = null;
+    render({ keepPhone: true });
+  }, duration);
+}
+
+function showNativeProactiveNotifications(executed) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  executed.forEach(item => {
+    try {
+      const notice = new Notification(item.title, { body: item.body, tag: item.notificationId });
+      notice.onclick = () => {
+        globalThis.focus?.();
+        openPhoneNotification(item.notificationId, 'chat', item.characterId);
+        notice.close?.();
+      };
+    } catch {
+      // The in-phone notification remains available when the browser rejects a native notification.
+    }
+  });
+}
+
+function proactiveAiRequest(config, task, character) {
+  const profile = resolveCharacterAiProfile(config, character);
+  const reason = {
+    'emotion-follow-up': `用户此前提到自己${task.payload?.mood || '状态不太好'}：${task.payload?.userText || ''}`,
+    'diary-response': `用户写下日记“${task.payload?.title || '今天的小事'}”：${task.payload?.content || ''}`,
+    'anniversary-reminder': `“${task.payload?.title || '纪念日'}”即将到来。`,
+    'morning-greeting': '现在适合发一条早安问候。',
+    'night-greeting': '现在适合发一条晚安问候。'
+  }[task.type] || '现在适合主动关心用户。';
+  const memories = (config.apps?.memory?.entries || [])
+    .filter(item => item.characterId === character.id)
+    .slice(0, 5)
+    .map(item => `- ${item.title}：${item.content}`)
+    .join('\n');
+  return {
+    providerId: profile.providerId,
+    profileId: profile.profileId,
+    system: [
+      `你是“${character.name}”，与用户的关系是${character.relationship || '陪伴者'}。`,
+      `角色设定：${character.definition || '自然、稳定地陪伴用户。'}`,
+      `说话风格：${character.speakingStyle || '自然、简短、像熟人聊天'}。`,
+      memories ? `可参考这些已确认记忆：\n${memories}` : '',
+      '请生成一条自然的主动消息，30 到 100 个中文字符。不要解释触发机制，不要使用标题，不要声称监控用户，不要诱导依赖。'
+    ].filter(Boolean).join('\n'),
+    messages: [{ role: 'user', content: reason }]
+  };
+}
+
+async function buildProactiveMessageOverrides(config, now = new Date()) {
+  if (!config.apps?.chat?.ai?.enabled) return {};
+  const due = (config.companion?.tasks || [])
+    .filter(task => task.status === 'pending' && Date.parse(task.dueAt) <= now.getTime())
+    .slice(0, 5);
+  const overrides = {};
+  for (const task of due) {
+    if ((task.type === 'morning-greeting' || task.type === 'night-greeting')
+      && String(task.payload?.message || '').trim()) continue;
+    const character = [config.character, ...(config.characters || [])].find(item => item.id === task.characterId) || config.character;
+    try {
+      const answer = (await streamAiChat(config, proactiveAiRequest(config, task, character)))
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 500);
+      if (answer) overrides[task.id] = answer;
+    } catch {
+      // Task execution falls back to the local safe line when AI is unavailable.
+    }
+  }
+  return overrides;
+}
+
+async function runProactiveSync() {
+  proactiveSyncTimer = null;
+  if (proactiveSyncing) return;
+  proactiveSyncing = true;
+  try {
+    const now = new Date();
+    const overrides = await buildProactiveMessageOverrides(state.config, now);
+    const result = processDueProactiveTasks(state.config, now, { messageOverrides: overrides });
+    if (!result.changed) return;
+    state.config = saveConfig(result.config);
+    showNativeProactiveNotifications(result.executed);
+    if (result.executed.length) {
+      state.ui.statusMessage = `收到 ${result.executed.length} 条主动陪伴消息。`;
+      showPhoneNotificationPopup(result.executed[0].notificationId);
+    }
+    render({ keepPhone: true });
+  } finally {
+    proactiveSyncing = false;
+  }
+}
+
+function scheduleProactiveSync(delay = 0) {
+  if (proactiveSyncTimer) clearTimeout(proactiveSyncTimer);
+  proactiveSyncTimer = setTimeout(runProactiveSync, Math.max(0, delay));
+}
+
+async function regenerateProactiveMessage(messageId) {
+  const message = (state.config.apps.chat.messages || []).find(item => item.id === messageId && item.proactive);
+  const task = (state.config.companion?.tasks || []).find(item => item.id === message?.taskId);
+  if (!message || !task || !state.config.apps.chat.ai?.enabled) {
+    state.phone.chatStatus = '请先在设置中连接 AI，再重新生成这条主动消息。';
+    render({ keepPhone: true });
+    return;
+  }
+  const character = [state.config.character, ...(state.config.characters || [])]
+    .find(item => item.id === message.characterId) || state.config.character;
+  state.phone.chatStatus = '正在重新生成主动消息…';
+  render({ keepPhone: true });
+  try {
+    const answer = (await streamAiChat(state.config, proactiveAiRequest(state.config, task, character)))
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+    if (!answer) throw new Error('模型没有返回内容');
+    state.config.apps.chat.messages = state.config.apps.chat.messages.map(item => item.id === messageId
+      ? { ...item, text: answer, providerId: resolveCharacterAiProfile(state.config, character).providerId, regeneratedAt: new Date().toISOString() }
+      : item);
+    state.phone.chatStatus = '主动消息已重新生成。';
+    persist('主动消息已重新生成。');
+  } catch {
+    state.phone.chatStatus = '重新生成失败，请检查 AI 服务后再试。';
+  }
   render({ keepPhone: true });
 }
 
@@ -1080,7 +1357,7 @@ function duplicateCharacter(characterId) {
   const source = characters.find(character => character.id === characterId);
   if (!source) return;
   const duplicate = structuredClone(source);
-  duplicate.id = `character-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  duplicate.id = createUniqueCharacterId(characters);
   duplicate.name = `${source.name || '角色'} 副本`;
   state.config.characters = [...(state.config.characters || []), duplicate];
   state.config.apps.character.activeCharacterId = duplicate.id;
@@ -1092,6 +1369,33 @@ function duplicateCharacter(characterId) {
     characterNotice: '已复制角色设定；聊天、记忆和 API 密钥不会复制。'
   };
   persist('角色设定已复制。');
+  render({ keepPhone: true });
+}
+
+function importCharacterPackage(parsed) {
+  const limit = Number(state.config.apps.character?.maxCharacters) || 3;
+  const characters = [state.config.character, ...(state.config.characters || [])];
+  if (characters.length >= limit) {
+    state.phone.characterNotice = `最多只能创建 ${limit} 个角色，请先删除一个角色。`;
+    render({ keepPhone: true });
+    return;
+  }
+  state.config = mergeCharacterPackage(state.config, parsed);
+  const imported = state.config.characters.at(-1);
+  state.phone = {
+    ...state.phone,
+    characterView: 'detail',
+    selectedCharacterId: imported.id,
+    selectedCharacterIndex: state.config.characters.length,
+    characterNotice: '角色已作为新角色导入，原有角色和数据没有被覆盖。'
+  };
+  persist('角色备份已导入。');
+  render({ keepPhone: true });
+}
+
+function clearCompanionIntegration(key) {
+  state.config = clearIntegrationRecords(state.config, key);
+  persist('联动产生的记录已清理，原始 App 数据仍然保留。');
   render({ keepPhone: true });
 }
 
@@ -1209,6 +1513,8 @@ function bindPanel(root) {
     deleteCharacter,
     moveCharacter,
     duplicateCharacter,
+    importCharacterPackage,
+    clearCompanionIntegration,
     setAppearancePage: page => {
       state.ui.appearancePage = page === 'apps' ? 'apps' : 'phone';
       if (state.ui.appearancePage === 'apps') {
@@ -1274,6 +1580,11 @@ function bindPanel(root) {
       if (kind === 'widgets') {
         state.ui.customWidgetTab = 'templates';
         state.ui.customWidgetIndex = Math.max(0, (state.config.theme.customization.widgets || []).length - 1);
+        state.ui.customWidgetHistory = { past: [], future: [] };
+        state.phone.currentApp = 'home';
+        state.phone.widgetEditing = true;
+        state.phone.widgetEditorWidgetId = widgetCollection()[state.ui.customWidgetIndex]?.id || '';
+        state.phone.widgetEditorElementIds = [];
       }
       if (['basic', 'shell', 'palette', 'iconPack', 'desktop'].includes(kind)) {
         setPath(state.config, `theme.customization.active.${kind}`, true);
@@ -1419,7 +1730,7 @@ function bindPanel(root) {
       render();
     },
     setCustomWidgetTab: tab => {
-      if (!['templates', 'style', 'code'].includes(tab)) return;
+      if (!['templates', 'layers', 'style', 'data', 'code'].includes(tab)) return;
       state.ui.customWidgetTab = tab;
       render();
     },
@@ -1521,27 +1832,181 @@ function bindPanel(root) {
       const widgets = state.config.theme.customization.widgets || [];
       if (!widgets[index]) return;
       state.ui.customWidgetIndex = index;
-      state.ui.customWidgetTab = 'style';
+      state.ui.customWidgetTab = widgets[index].kind === 'composition' ? 'layers' : 'code';
+      state.phone.currentApp = 'home';
+      state.phone.widgetEditing = true;
+      state.phone.widgetEditorWidgetId = widgets[index].id;
+      state.phone.widgetEditorElementIds = [];
       render();
     },
     addCustomWidget: templateId => {
       const widgets = state.config.theme.customization.widgets || [];
-      widgets.push(createCustomWidgetFromTemplate(templateId, widgets.length));
+      snapshotWidgetHistory();
+      widgets.push(createCompositionWidget(templateId, widgets.length));
       state.ui.customWidgetIndex = widgets.length - 1;
-      state.ui.customWidgetTab = 'style';
-      state.ui.customStatus = '模板已加入桌面，可继续调整样式或编写代码。';
+      state.ui.customWidgetTab = 'layers';
+      state.phone.currentApp = 'home';
+      state.phone.widgetEditing = true;
+      state.phone.widgetEditorWidgetId = widgets.at(-1).id;
+      state.phone.widgetEditorElementIds = [];
+      state.ui.customStatus = '模板已加入桌面。点击右侧元素即可自由摆放。';
+      persist('小组件已加入桌面。');
       render();
     },
     removeCustomWidget: index => {
+      snapshotWidgetHistory();
       state.config.theme.customization.widgets.splice(index, 1);
       state.ui.customWidgetIndex = Math.max(0, Math.min(
         state.ui.customWidgetIndex,
         state.config.theme.customization.widgets.length - 1
       ));
       if (!state.config.theme.customization.widgets.length) state.ui.customWidgetTab = 'templates';
+      state.phone.widgetEditorWidgetId = widgetCollection()[state.ui.customWidgetIndex]?.id || '';
+      state.phone.widgetEditorElementIds = [];
       state.ui.customStatus = '组件已从预览移除。';
+      persist('组件已删除。');
       render();
     },
+    selectCompositionElements: (widgetId, ids, options = {}) => {
+      const index = widgetCollection().findIndex(widget => widget.id === widgetId);
+      if (index < 0) return;
+      state.ui.customWidgetIndex = index;
+      state.phone.widgetEditorWidgetId = widgetId;
+      state.phone.widgetEditorElementIds = [...new Set(ids || [])];
+      if (!options.noPhoneRender) render();
+    },
+    commitCompositionFrames: (widgetId, updates) => {
+      const index = widgetCollection().findIndex(widget => widget.id === widgetId);
+      const widget = widgetCollection()[index];
+      if (!widget || widget.kind !== 'composition' || !updates?.length) return;
+      snapshotWidgetHistory();
+      updates.forEach(update => {
+        const element = widget.elements.find(item => item.id === update.id);
+        if (element && !element.locked) element.frame = { ...element.frame, ...update.frame };
+      });
+      state.ui.customWidgetIndex = index;
+      normalizeSelectedComposition();
+      persist('组件位置已自动保存。');
+      render();
+    },
+    addCompositionElement: type => {
+      const widget = selectedCompositionWidget();
+      if (!widget || widget.elements.length >= 40) return;
+      snapshotWidgetHistory();
+      const element = createCompositionElement(type, widget.elements.length);
+      widget.elements.push(element);
+      state.phone.widgetEditorElementIds = [element.id];
+      normalizeSelectedComposition();
+      state.ui.customWidgetTab = 'style';
+      persist('新图层已加入。');
+      render();
+    },
+    updateCompositionElement: (elementId, path, value, options = {}) => {
+      const widget = selectedCompositionWidget();
+      const index = widget?.elements.findIndex(item => item.id === elementId) ?? -1;
+      if (!widget || index < 0) return;
+      if (!options.noHistory) snapshotWidgetHistory();
+      setPath(widget.elements[index], path, value);
+      normalizeSelectedComposition();
+      persist('图层修改已自动保存。');
+      render();
+    },
+    updateCompositionCanvas: (path, value) => {
+      const widget = selectedCompositionWidget();
+      if (!widget) return;
+      snapshotWidgetHistory();
+      setPath(widget, path, value);
+      normalizeSelectedComposition();
+      persist('组件外观已自动保存。');
+      render();
+    },
+    removeCompositionElements: () => {
+      const widget = selectedCompositionWidget();
+      const ids = state.phone.widgetEditorElementIds || [];
+      if (!widget || !ids.length) return;
+      snapshotWidgetHistory();
+      widget.elements = widget.elements.filter(item => !ids.includes(item.id) && !ids.includes(item.parentId));
+      state.phone.widgetEditorElementIds = [];
+      normalizeSelectedComposition();
+      persist('图层已删除。');
+      render();
+    },
+    duplicateCompositionElements: () => {
+      const widget = selectedCompositionWidget();
+      const ids = state.phone.widgetEditorElementIds || [];
+      if (!widget || !ids.length || widget.elements.length >= 40) return;
+      snapshotWidgetHistory();
+      const copies = widget.elements.filter(item => ids.includes(item.id)).map((item, index) => ({
+        ...JSON.parse(JSON.stringify(item)),
+        id: `${item.type}-${Date.now()}-${index}`,
+        parentId: '',
+        frame: { ...item.frame, x: item.frame.x + 30, y: item.frame.y + 30, zIndex: widget.elements.length + index + 1 }
+      }));
+      widget.elements.push(...copies.slice(0, 40 - widget.elements.length));
+      state.phone.widgetEditorElementIds = copies.map(item => item.id);
+      normalizeSelectedComposition();
+      persist('已复制所选图层。');
+      render();
+    },
+    arrangeCompositionElements: command => {
+      const widget = selectedCompositionWidget();
+      const selected = widget?.elements.filter(item => state.phone.widgetEditorElementIds.includes(item.id) && item.type !== 'group') || [];
+      if (!widget || !selected.length) return;
+      snapshotWidgetHistory();
+      if (command === 'front' || command === 'back') {
+        const edge = command === 'front'
+          ? Math.max(0, ...widget.elements.map(item => item.frame.zIndex)) + 1
+          : 0;
+        selected.forEach((item, index) => { item.frame.zIndex = edge + index; });
+      } else if (command === 'distributeX' && selected.length > 2) {
+        const ordered = [...selected].sort((a, b) => a.frame.x - b.frame.x);
+        const start = ordered[0].frame.x;
+        const end = ordered.at(-1).frame.x;
+        ordered.forEach((item, index) => { item.frame.x = start + (end - start) * index / (ordered.length - 1); });
+      } else if (command === 'distributeY' && selected.length > 2) {
+        const ordered = [...selected].sort((a, b) => a.frame.y - b.frame.y);
+        const start = ordered[0].frame.y;
+        const end = ordered.at(-1).frame.y;
+        ordered.forEach((item, index) => { item.frame.y = start + (end - start) * index / (ordered.length - 1); });
+      } else {
+        const left = Math.min(...selected.map(item => item.frame.x));
+        const top = Math.min(...selected.map(item => item.frame.y));
+        const right = Math.max(...selected.map(item => item.frame.x + item.frame.w));
+        const bottom = Math.max(...selected.map(item => item.frame.y + item.frame.h));
+        selected.forEach(item => {
+          if (command === 'left') item.frame.x = left;
+          if (command === 'center') item.frame.x = (left + right - item.frame.w) / 2;
+          if (command === 'right') item.frame.x = right - item.frame.w;
+          if (command === 'top') item.frame.y = top;
+          if (command === 'middle') item.frame.y = (top + bottom - item.frame.h) / 2;
+          if (command === 'bottom') item.frame.y = bottom - item.frame.h;
+        });
+      }
+      normalizeSelectedComposition();
+      persist('图层排列已更新。');
+      render();
+    },
+    groupCompositionElements: enabled => {
+      const widget = selectedCompositionWidget();
+      const selected = widget?.elements.filter(item => state.phone.widgetEditorElementIds.includes(item.id) && item.type !== 'group') || [];
+      if (!widget || (enabled && selected.length < 2)) return;
+      snapshotWidgetHistory();
+      if (enabled) {
+        const group = createCompositionElement('group', widget.elements.length);
+        group.id = `group-${Date.now()}`;
+        group.name = '图层组';
+        widget.elements.push(group);
+        selected.forEach(item => { item.parentId = group.id; });
+        state.phone.widgetEditorElementIds = selected.map(item => item.id);
+      } else {
+        selected.forEach(item => { item.parentId = ''; });
+      }
+      normalizeSelectedComposition();
+      persist(enabled ? '图层已分组。' : '已取消分组。');
+      render();
+    },
+    undoCustomWidget: () => { if (restoreWidgetHistory('undo')) render(); },
+    redoCustomWidget: () => { if (restoreWidgetHistory('redo')) render(); },
     setCustomWidgetCodeMode: (index, enabled) => {
       const widget = state.config.theme.customization.widgets?.[index];
       if (!widget) return;
@@ -1576,6 +2041,9 @@ function bindPanel(root) {
       state.phone.companionAppearanceAnchor = null;
       state.phone.memoryAppearanceAnchor = null;
       state.phone.settingsAppearanceAnchor = null;
+      state.phone.widgetEditing = false;
+      state.phone.widgetEditorWidgetId = '';
+      state.phone.widgetEditorElementIds = [];
       render();
     },
     applyCustomization: () => {
@@ -1609,6 +2077,9 @@ function bindPanel(root) {
       state.phone.companionAppearanceAnchor = null;
       state.phone.memoryAppearanceAnchor = null;
       state.phone.settingsAppearanceAnchor = null;
+      state.phone.widgetEditing = false;
+      state.phone.widgetEditorWidgetId = '';
+      state.phone.widgetEditorElementIds = [];
       persist('自定义外观已保存。');
       render();
     },
@@ -1852,6 +2323,14 @@ function createPhoneHandlers() {
     getConfig: () => state.config,
     updatePath,
     updatePhoneState,
+    selectCompositionElements,
+    commitCompositionFrames,
+    beginCustomWidgetLayoutEdit,
+    emitCompanionEvent,
+    removeCompanionSource: removeCompanionEventSource,
+    acceptMemoryCandidate: (candidateId, overrides) => handleMemoryCandidate(candidateId, 'accepted', overrides),
+    dismissMemoryCandidate: candidateId => handleMemoryCandidate(candidateId, 'dismissed'),
+    regenerateProactiveMessage,
     customAppRequest: handleCustomAppRequest,
     manageCustomApps: () => {
       if (phoneMode) {
@@ -1870,6 +2349,8 @@ function createPhoneHandlers() {
     deleteCharacter,
     moveCharacter,
     duplicateCharacter,
+    importCharacterPackage,
+    clearCompanionIntegration,
     checkStartupHealth: refreshStartupHealth,
     phoneSetupAction: async (action, target) => {
       if (action === 'backup') {
@@ -1914,17 +2395,24 @@ function createPhoneHandlers() {
       render({ keepPhone: true });
     },
     toggleNotificationCenter: () => {
-      state.phone.notificationCenterOpen = !state.phone.notificationCenterOpen;
+      if (state.phone.notificationCenterOpen) {
+        if (phoneNotificationPopupTimer) clearTimeout(phoneNotificationPopupTimer);
+        phoneNotificationPopupTimer = null;
+        state.phone.notificationCenterOpen = false;
+        state.phone.notificationPopupId = null;
+      } else {
+        showPhoneNotificationPopup();
+      }
       render({ keepPhone: true });
     },
-    openPhoneNotification: (appId, characterId) => {
+    openPhoneNotification,
+    markAllPhoneNotificationsRead: () => {
+      if (phoneNotificationPopupTimer) clearTimeout(phoneNotificationPopupTimer);
+      phoneNotificationPopupTimer = null;
       state.phone.notificationCenterOpen = false;
-      state.phone.currentApp = appId || 'home';
-      if (appId === 'chat') {
-        state.phone.chatCharacterId = characterId || state.config.character.id;
-        state.phone.chatView = 'conversation';
-      }
-      if (appId === 'settings') state.phone.settingsPage = 'categories';
+      state.phone.notificationPopupId = null;
+      state.config = markAllCompanionNotificationsRead(state.config);
+      persist('陪伴消息已全部标为已读。');
       render({ keepPhone: true });
     },
     markPhoneSetup: key => {
@@ -2085,7 +2573,7 @@ function render(options = {}) {
           <div id="lovePhoneOS"></div>
         </aside>
       </main>
-      ${renderCustomizationDrawer(state.config, state.ui, getEnabledApps(state.config, runtimeCapabilities, state.phone.customApps))}
+      ${renderCustomizationDrawer(state.config, { ...state.ui, widgetEditorElementIds: state.phone.widgetEditorElementIds }, getEnabledApps(state.config, runtimeCapabilities, state.phone.customApps))}
       <div id="globalStorageNotice" class="global-storage-notice" role="alert" hidden></div>
     `;
 
@@ -2113,4 +2601,9 @@ setStorageStatusListener(status => {
   if (!phoneMode && state.activeStep === 'save') render();
 });
 render();
+scheduleProactiveSync(0);
+setInterval(() => scheduleProactiveSync(0), 30000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleProactiveSync(0);
+});
 void refreshStartupHealth();

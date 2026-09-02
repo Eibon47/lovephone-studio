@@ -42,6 +42,14 @@ test('deleting a character purges every role-scoped data collection', () => {
     { id: 'kept-greeting', characterId: keptId },
     { id: 'removed-greeting', characterId: removedId }
   ];
+  config.companion.tasks = [
+    { id: 'kept-task', characterId: keptId },
+    { id: 'removed-task', characterId: removedId }
+  ];
+  config.companion.notifications = [
+    { id: 'kept-notice', characterId: keptId },
+    { id: 'removed-notice', characterId: removedId }
+  ];
 
   const next = purgeCharacterData(config, removedId);
   assert.deepEqual(next.apps.chat.sessions.map(item => item.id), ['session-kept']);
@@ -52,6 +60,8 @@ test('deleting a character purges every role-scoped data collection', () => {
   assert.deepEqual(next.apps.diary.entries.map(item => item.id), ['kept-diary']);
   assert.deepEqual(next.apps.goodnight.entries.map(item => item.id), ['kept-night']);
   assert.deepEqual(next.apps.goodnight.greetings.map(item => item.id), ['kept-greeting']);
+  assert.deepEqual(next.companion.tasks.map(item => item.id), ['kept-task']);
+  assert.deepEqual(next.companion.notifications.map(item => item.id), ['kept-notice']);
 });
 
 test('failed AI profile deletion stays queued and retries without a secret', async () => {

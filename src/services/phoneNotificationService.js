@@ -2,6 +2,12 @@ import { localDateKey } from '../apps/appData.js';
 import { upcomingAnniversaries } from './anniversaryService.js';
 
 export function collectPhoneNotifications(config, date = new Date()) {
+  const persistent = (config.companion?.notifications || [])
+    .filter(item => item?.id && item?.body)
+    .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0))
+    .slice(0, 20);
+  if (persistent.length) return persistent;
+
   const today = localDateKey(date);
   const notices = [];
   const greetings = (config.apps?.goodnight?.greetings || [])
@@ -38,4 +44,16 @@ export function collectPhoneNotifications(config, date = new Date()) {
   return notices
     .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0))
     .slice(0, 8);
+}
+
+export function unreadPhoneNotificationCount(config) {
+  const persistent = config.companion?.notifications || [];
+  if (persistent.length) return persistent.filter(item => !item.readAt).length;
+  return collectPhoneNotifications(config).length;
+}
+
+export function unreadNotificationsForApp(config, appId) {
+  return (config.companion?.notifications || [])
+    .filter(item => item.appId === appId && !item.readAt)
+    .length;
 }

@@ -194,6 +194,15 @@ async function playSelected(track, config, handlers, osState, pool = []) {
       config.apps.music.showLyrics && track.source === 'netease' ? loadOnlineLyrics(musicBaseUrl(config), track.encryptedId).catch(() => '') : Promise.resolve('')
     ]);
     handlers.updatePhoneState?.({ musicTrack: result.track || track, musicPlayback: result.state, musicPlaying: result.state.status === 'playing', musicLyrics: parseLyrics(lyric), musicStatus: '' });
+    const activeCharacterId = config.apps.character.activeCharacterId || config.character.id;
+    handlers.emitCompanionEvent?.({
+      type: 'music.track.started',
+      characterId: activeCharacterId,
+      sourceApp: 'music',
+      sourceId: `${track.source || 'local'}:${track.id}`,
+      dedupeKey: `music:${activeCharacterId}:${track.source || 'local'}:${track.id}:${new Date().toISOString().slice(0, 10)}`,
+      payload: { name: track.name, artist: track.artist, source: track.source }
+    });
   } catch (error) {
     handlers.updatePhoneState?.({ musicStatus: error.message || '播放失败。', musicPlaying: false });
   }

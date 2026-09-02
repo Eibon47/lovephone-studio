@@ -3,18 +3,18 @@ import { escapeHtml } from './html.js';
 import { getAppIcon } from './appAppearance.js?v=app-config-71';
 import { safeUploadedImage } from './icons.js?v=app-config-61';
 import { renderStatusBar } from './StatusBar.js';
-import { WIDGET_IDS } from './widgetCatalog.js';
-import { activeCharacter, localDateKey } from '../apps/appData.js?v=app-config-40';
-import {
-  findGreeting,
-  greetingPeriodFor
-} from '../services/greetingService.js?v=app-config-45';
+import { WIDGET_IDS } from './widgetCatalog.js?v=app-config-1';
+import { activeCharacter } from '../apps/appData.js?v=app-config-40';
 import {
   primaryAnniversary
 } from '../services/anniversaryService.js?v=app-config-44';
-import { renderCustomWidgets } from './customWidgetRuntime.js?v=app-config-100';
+import { getCustomWidgetEntries } from './customWidgetRuntime.js?v=app-config-106';
 import { phoneSetupProgress, shouldShowPhoneSetup } from '../services/phoneSetupService.js?v=app-config-1';
-import { collectPhoneNotifications } from '../services/phoneNotificationService.js?v=app-config-1';
+import {
+  collectPhoneNotifications,
+  unreadNotificationsForApp,
+  unreadPhoneNotificationCount
+} from '../services/phoneNotificationService.js';
 import { characterPresence } from '../services/characterPresenceService.js?v=app-config-1';
 
 const defaultLayouts = {
@@ -25,10 +25,11 @@ const defaultLayouts = {
   calendar: { x: 2, y: 2, w: 2, h: 2 },
   anniversary: { x: 0, y: 4, w: 2, h: 2 },
   characterStatus: { x: 0, y: 4, w: 4, h: 2 },
-  dailyNote: { x: 0, y: 6, w: 4, h: 2 },
   mood: { x: 0, y: 6, w: 2, h: 2 },
   quickActions: { x: 2, y: 6, w: 2, h: 2 }
 };
+
+const DESKTOP_PAGE_ROWS = 50;
 
 function layoutAttrs(layout) {
   return `gs-x="${layout.x}" gs-y="${layout.y}" gs-w="${layout.w}" gs-h="${layout.h}"`;
@@ -38,8 +39,16 @@ function widgetLayoutAttrs(id, widget = {}) {
   return layoutAttrs({ ...defaultLayouts[id], ...(widget.layout || {}) });
 }
 
-function defaultAppLayout(index) {
-  return {
+function defaultAppLayout(index, config) {
+  const compositionGrid = Number(config.theme?.customization?.version) >= 3;
+  const pageIndex = Math.floor(index / 8);
+  const pageSlot = index % 8;
+  return compositionGrid ? {
+    x: (pageSlot % 4) * 3,
+    y: pageIndex * DESKTOP_PAGE_ROWS + 24 + Math.floor(pageSlot / 4) * 6,
+    w: 3,
+    h: 6
+  } : {
     x: index % 4,
     y: 4 + Math.floor(index / 4) * 2,
     w: 1,
@@ -51,9 +60,11 @@ function appIconHtml(app, currentApp, config) {
   const icon = getAppIcon(config, app);
   const uploadedClass = /^data:image\//i.test(icon) ? ' is-uploaded' : '';
   const activeClass = currentApp === app.id ? ' active' : '';
+  const unreadCount = unreadNotificationsForApp(config, app.id);
   return `
     <button class="phone-app${activeClass}" type="button" data-open-app="${app.id}" aria-label="${escapeHtml(app.name)}">
       <span class="phone-app-icon${uploadedClass}"><img src="${icon}" alt="" /></span>
+      ${unreadCount ? `<b class="phone-app-badge" aria-label="${unreadCount} 条未读消息">${Math.min(99, unreadCount)}</b>` : ''}
       <span class="phone-app-name">${escapeHtml(app.name)}</span>
     </button>
   `;
@@ -69,18 +80,37 @@ function gridItem(id, widget, content) {
   `;
 }
 
-function appGridItem(app, currentApp, index, config) {
-  const layout = {
-    ...defaultAppLayout(index),
-    ...(config.theme?.appLayouts?.[app.id] || {})
-  };
+function appGridItem(app, currentApp, layout, config) {
   return `
-    <div class="grid-stack-item desktop-app-item" data-app-layout-id="${app.id}" data-open-app="${app.id}" ${layoutAttrs(layout)}>
+    <div class="grid-stack-item desktop-app-item" gs-no-resize="true" data-app-layout-id="${app.id}" data-open-app="${app.id}" ${layoutAttrs(layout)}>
       <div class="grid-stack-item-content">
         ${appIconHtml(app, currentApp, config)}
       </div>
     </div>
   `;
+}
+
+function resolveDesktopAppLayouts(apps, config) {
+  const slots = Array.from({ length: 8 }, (_, pageIndex) => [24, 30]
+    .flatMap(y => [0, 3, 6, 9].map(x => ({ x, y: pageIndex * DESKTOP_PAGE_ROWS + y, w: 3, h: 6 }))))
+    .flat();
+  const used = [];
+  const overlaps = layout => used.some(item => (
+    layout.x < item.x + item.w && layout.x + layout.w > item.x
+    && layout.y < item.y + item.h && layout.y + layout.h > item.y
+  ));
+  return apps.map((app, index) => {
+    const saved = config.theme?.appLayouts?.[app.id] || defaultAppLayout(index, config);
+    let layout = {
+      x: Math.min(9, Math.max(0, Math.round(Number(saved.x) || 0))),
+      y: Math.min(282, Math.max(0, Math.round(Number(saved.y) || 24))),
+      w: 3,
+      h: 6
+    };
+    if (overlaps(layout)) layout = slots.find(slot => !overlaps(slot)) || layout;
+    used.push(layout);
+    return { app, layout };
+  });
 }
 
 function renderClockWidget(widget) {
@@ -199,34 +229,6 @@ function renderCharacterStatusWidget(widget, config, osState) {
   `);
 }
 
-function renderDailyNoteWidget(widget, config, osState) {
-  const character = activeCharacter(config, osState);
-  const greetingCharacterId = config.apps?.goodnight?.useCurrentCharacter ? character.id : 'system';
-  const currentGreeting = findGreeting(config, {
-    date: localDateKey(),
-    period: greetingPeriodFor(),
-    characterId: greetingCharacterId
-  });
-  const latestGreeting = (config.apps?.goodnight?.greetings || [])
-    .find(item => item.characterId === greetingCharacterId);
-  const latest = (config.apps?.goodnight?.entries || [])
-    .find(item => (item.characterId || config.character.id) === character.id);
-  const greeting = currentGreeting || latestGreeting;
-  const text = config.apps?.goodnight?.desktopNote
-    ? greeting?.message || latest?.message || latest?.note || widget.text || '今天也会好好陪着你。'
-    : widget.text || '今天也会好好陪着你。';
-  const author = greeting?.characterName || character?.name || '小满';
-  return gridItem('dailyNote', widget, `
-    <article class="desktop-widget desktop-widget-note" data-widget-open-app="${config.apps?.goodnight?.enabled ? 'goodnight' : 'chat'}">
-      <span class="note-mark">“</span>
-      <div>
-        <strong>${escapeHtml(text)}</strong>
-        <small>来自 ${escapeHtml(author)}</small>
-      </div>
-    </article>
-  `);
-}
-
 function renderMoodWidget(widget, config) {
   const character = activeCharacter(config);
   const savedScores = (config.apps?.diary?.entries || [])
@@ -268,37 +270,97 @@ const widgetRenderers = {
   calendar: (widget, config) => renderCalendarWidget(widget, config),
   anniversary: (widget, config) => renderAnniversaryWidget(widget, config),
   characterStatus: (widget, config, osState) => renderCharacterStatusWidget(widget, config, osState),
-  dailyNote: (widget, config, osState) => renderDailyNoteWidget(widget, config, osState),
   mood: (widget, config) => renderMoodWidget(widget, config),
   quickActions: (widget, config) => renderQuickActionsWidget(widget, config)
 };
 
-function renderWidgetItems(config, osState) {
+function getBuiltinWidgetEntries(config, osState) {
   const widgets = config.theme?.widgets || {};
+  const migratedIds = new Set((config.theme?.customization?.widgets || []).map(widget => widget.id));
   return WIDGET_IDS
     .map(id => {
-      const enabled = widgets[id]?.enabled
-        || (id === 'dailyNote' && config.apps?.goodnight?.enabled && config.apps.goodnight.desktopNote);
+      if (migratedIds.has(`builtin-${id}`)) return null;
+      const enabled = widgets[id]?.enabled;
       const appEnabled = enabled
         || (id === 'anniversary' && config.apps?.anniversary?.enabled && config.apps.anniversary.desktopWidget);
-      return appEnabled ? widgetRenderers[id]?.(widgets[id] || {}, config, osState) : '';
+      if (!appEnabled || !widgetRenderers[id]) return null;
+      const widget = widgets[id] || {};
+      return {
+        id,
+        layout: { ...defaultLayouts[id], ...(widget.layout || {}) },
+        render: layout => widgetRenderers[id]({ ...widget, layout }, config, osState)
+      };
     })
-    .filter(Boolean)
-    .join('');
+    .filter(Boolean);
+}
+
+function overlaps(rect, occupied) {
+  return occupied.some(item => (
+    rect.x < item.x + item.w && rect.x + rect.w > item.x
+    && rect.y < item.y + item.h && rect.y + rect.h > item.y
+  ));
+}
+
+function findPagePosition(layout, occupied) {
+  const w = Math.min(12, Math.max(2, Math.round(Number(layout.w) || 2)));
+  const h = Math.min(24, Math.max(2, Math.round(Number(layout.h) || 2)));
+  const preferredX = Math.min(12 - w, Math.max(0, Math.round(Number(layout.x) || 0)));
+  const preferredY = Math.min(DESKTOP_PAGE_ROWS - h, Math.max(0, Math.round(Number(layout.y) || 0) % DESKTOP_PAGE_ROWS));
+  const candidates = [{ x: preferredX, y: preferredY }];
+  for (let y = 0; y <= DESKTOP_PAGE_ROWS - h; y += 1) {
+    for (let x = 0; x <= 12 - w; x += 1) {
+      if (x !== preferredX || y !== preferredY) candidates.push({ x, y });
+    }
+  }
+  const position = candidates.find(candidate => !overlaps({ ...candidate, w, h }, occupied));
+  return position ? { ...position, w, h } : null;
+}
+
+function paginateWidgetEntries(entries) {
+  const pages = [];
+  [...entries]
+    .sort((a, b) => (Number(a.layout?.y) || 0) - (Number(b.layout?.y) || 0) || (Number(a.layout?.x) || 0) - (Number(b.layout?.x) || 0))
+    .forEach(entry => {
+      let pageIndex = Math.min(7, Math.max(0, Math.floor((Number(entry.layout?.y) || 0) / DESKTOP_PAGE_ROWS)));
+      let placed = null;
+      while (!placed && pageIndex < 8) {
+        const page = pages[pageIndex] || (pages[pageIndex] = []);
+        const layout = findPagePosition(entry.layout || {}, page.map(item => item.layout));
+        if (layout) placed = { ...entry, layout, pageIndex };
+        else pageIndex += 1;
+      }
+      if (!placed) return;
+      pages[placed.pageIndex].push(placed);
+    });
+  return pages.length ? pages : [[]];
 }
 
 function renderDesktopGrid(config, apps, currentApp, osState) {
-  const widgetItems = renderWidgetItems(config, osState);
-  const customWidgetItems = renderCustomWidgets(config, osState);
-  const appItems = apps
-    .map((app, index) => appGridItem(app, currentApp, index, config))
-    .join('');
+  const desktopApps = apps.filter(app => !app.dock);
+  const appEntries = resolveDesktopAppLayouts(desktopApps, config).map(({ app, layout }) => ({
+    id: `app-${app.id}`,
+    layout,
+    render: localLayout => appGridItem(app, currentApp, localLayout, config)
+  }));
+  const pages = paginateWidgetEntries([
+    ...getBuiltinWidgetEntries(config, osState),
+    ...getCustomWidgetEntries(config, osState),
+    ...appEntries
+  ]);
+  if (osState.widgetEditing && pages.length === 1 && pages[0]?.length) pages.push([]);
 
   return `
-    <div class="desktop-grid grid-stack" data-desktop-grid>
-      ${widgetItems}
-      ${customWidgetItems}
-      ${appItems}
+    <div class="desktop-widget-pager" data-desktop-widget-pager>
+      <div class="desktop-widget-pages" data-desktop-widget-pages>
+        ${pages.map((page, pageIndex) => `
+          <section class="desktop-widget-page" data-desktop-widget-page="${pageIndex}">
+            <div class="desktop-grid grid-stack" data-desktop-grid data-widget-page-index="${pageIndex}">
+              ${page.map(entry => entry.render(entry.layout)).join('')}
+            </div>
+          </section>
+        `).join('')}
+      </div>
+      ${pages.length > 1 ? `<nav class="desktop-page-dots" aria-label="桌面分页">${pages.map((_, index) => `<button class="${index === 0 ? 'is-active' : ''}" type="button" data-desktop-page-dot="${index}" aria-label="第 ${index + 1} 页"></button>`).join('')}</nav>` : ''}
     </div>
   `;
 }
@@ -335,15 +397,16 @@ function renderPhoneSetup(config, osState) {
 
 function renderNotificationCenter(config, osState) {
   const notices = collectPhoneNotifications(config);
-  if (!osState.notificationCenterOpen) return '';
+  if (!osState.notificationCenterOpen || !notices.length) return '';
+  const notice = notices.find(item => item.id === osState.notificationPopupId)
+    || notices.find(item => !item.readAt)
+    || notices[0];
   return `
-    <section class="phone-notice-center" aria-label="今日消息">
-      <header><strong>今日消息</strong><button type="button" data-phone-notice-toggle aria-label="收起通知">×</button></header>
-      ${notices.length ? `<div>${notices.map(item => `
-        <button type="button" data-phone-notice-open="${item.appId}" data-phone-notice-character="${escapeHtml(item.characterId || '')}">
-          <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)}</small></span><i>›</i>
-        </button>
-      `).join('')}</div>` : '<p>今天还没有新的陪伴消息。</p>'}
+    <section class="phone-notice-center" aria-label="新消息" role="status" aria-live="polite">
+      <button class="${notice.readAt ? 'is-read' : 'is-unread'}" type="button" data-phone-notice-id="${escapeHtml(notice.id)}" data-phone-notice-open="${escapeHtml(notice.appId || 'home')}" data-phone-notice-character="${escapeHtml(notice.characterId || '')}">
+        <span><strong>${escapeHtml(notice.title)}</strong><small>${escapeHtml(notice.body)}</small></span><i>›</i>
+      </button>
+      <button class="phone-notice-dismiss" type="button" data-phone-notice-toggle aria-label="收起通知">×</button>
     </section>
   `;
 }
@@ -351,7 +414,7 @@ function renderNotificationCenter(config, osState) {
 export function renderHomeScreen(config, osState) {
   const apps = getEnabledApps(config, osState.runtimeCapabilities, osState.customApps);
   const dockApps = apps.filter(app => app.dock).slice(0, 4);
-  const notificationCount = collectPhoneNotifications(config).length;
+  const notificationCount = unreadPhoneNotificationCount(config);
 
   return `
     <section class="phone-screen phone-home">

@@ -222,6 +222,15 @@ export const DiaryApp = {
         delete entry.aiSummaryProviderId;
       }
       const next = id ? entries.map(item => item.id === id ? entry : item) : [entry, ...entries];
+      handlers.emitCompanionEvent?.({
+        type: 'diary.entry.saved',
+        characterId: character.id,
+        sourceApp: 'diary',
+        sourceId: entry.id,
+        dedupeKey: `diary:${character.id}:${entry.id}`,
+        occurredAt: `${entry.date}T12:00:00`,
+        payload: { title: entry.title, content: entry.content, mood: entry.mood }
+      });
       handlers.updatePhoneState?.({
         diaryEditingId: null,
         diaryStatus: config.apps.diary.aiSummary && diaryChanged ? '日记已保存，准备生成 AI 小结…' : '日记已保存。'
@@ -249,6 +258,7 @@ export const DiaryApp = {
     container.querySelector('[data-diary-delete-confirm]')?.addEventListener('click', event => {
       const result = removeItemWithUndo(entries, event.currentTarget.dataset.diaryDeleteConfirm);
       if (!result.undo) return;
+      handlers.removeCompanionSource?.('diary', result.undo.item.id);
       handlers.updatePhoneState?.({
         diaryDeleteConfirmId: null,
         diaryEditingId: null,
@@ -265,6 +275,16 @@ export const DiaryApp = {
       const otherEntries = current.filter(entry => (
         (entry.characterId || latest.character.id) !== character.id
       ));
+      const restoredEntry = osState.diaryUndo?.item;
+      if (restoredEntry) handlers.emitCompanionEvent?.({
+        type: 'diary.entry.saved',
+        characterId: restoredEntry.characterId || character.id,
+        sourceApp: 'diary',
+        sourceId: restoredEntry.id,
+        dedupeKey: `diary:${restoredEntry.characterId || character.id}:${restoredEntry.id}`,
+        occurredAt: `${restoredEntry.date}T12:00:00`,
+        payload: { title: restoredEntry.title, content: restoredEntry.content, mood: restoredEntry.mood }
+      });
       handlers.updatePhoneState?.({ diaryUndo: null });
       handlers.updatePath?.(
         'apps.diary.entries',

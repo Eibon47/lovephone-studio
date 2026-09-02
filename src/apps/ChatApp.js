@@ -18,9 +18,12 @@ import {
 import {
   applyChatMessageUpdate,
   activeChatSession,
+  markChatSessionRead,
   messagesForSession,
   sessionsForCharacter
 } from '../services/chatSessionService.js?v=app-config-95';
+import { retrieveRelevantMemories } from '../services/memoryRetrievalService.js';
+import { isIntegrationEnabled } from '../services/companionPolicyService.js';
 import {
   characterPresence,
   latestCharacterGreeting
@@ -97,14 +100,25 @@ function renderChatStatus(osState) {
   `;
 }
 
-export function buildChatSystemPrompt(config, character) {
+export function buildChatSystemPrompt(config, character, query = '') {
   const memories = config.apps?.memory?.enabled && config.apps.memory.longTerm
-    ? (config.apps.memory.entries || [])
-      .filter(entry => (entry.characterId || config.character.id) === character.id)
-      .slice(0, 12)
+    ? retrieveRelevantMemories(config.apps.memory.entries || [], {
+      characterId: character.id,
+      query,
+      limit: 6,
+      maxChars: 1500
+    })
       .map(entry => `- ${entry.title}：${entry.content}`)
       .join('\n')
     : '';
+  const followUps = (config.companion?.followUps || [])
+    .filter(item => item.characterId === character.id && !item.addressedAt)
+    .slice(0, 3)
+    .map(item => `- ${item.summary}`)
+    .join('\n');
+  const latestMusic = isIntegrationEnabled(config, 'musicContext')
+    ? (config.companion?.events || []).find(item => item.type === 'music.track.started' && item.characterId === character.id)
+    : null;
   return [
     `你是名为“${character.name}”的 AI 陪伴角色。`,
     `你与用户的关系：${character.relationship || '陪伴者'}。`,
@@ -113,6 +127,8 @@ export function buildChatSystemPrompt(config, character) {
     `说话风格：${character.speakingStyle || '自然简洁，像熟人聊天'}。`,
     `角色设定：${character.definition || '稳定陪伴用户，尊重用户真实生活和个人边界。'}`,
     memories ? `你可以参考这些由用户保存的记忆：\n${memories}` : '',
+    followUps ? `用户最近提到过这些状态，请自然延续关心，不要声称自己在监控用户：\n${followUps}` : '',
+    latestMusic ? `用户最近播放了《${latestMusic.payload?.name || '一首歌'}》${latestMusic.payload?.artist ? `，歌手是${latestMusic.payload.artist}` : ''}。只在与当前话题相关时自然提及。` : '',
     '保持角色一致，但必须明确自己是 AI，不冒充真人，不诱导依赖，不索取隐私。',
     '遇到自伤、自杀、暴力或重大财产风险时，先关心安全并鼓励用户联系现实中的可信任人员和当地紧急援助。',
     '回复以自然中文为主，通常控制在 1 到 4 个短段落，不要机械复述用户的话。'
@@ -121,19 +137,22 @@ export function buildChatSystemPrompt(config, character) {
 
 export function buildChatRequest(config, character, messages) {
   const profile = resolveCharacterAiProfile(config, character);
+  const latestUserText = messages.filter(message => message.from === 'user').at(-1)?.text || '';
   const history = config.apps.chat.history
     ? messages.slice(-20).map(message => ({
         role: message.from === 'user' ? 'user' : 'assistant',
-        content: message.text
+        content: message.from === 'user' && message.replyTo?.summary
+          ? `[引用${message.replyTo.sender || '一条消息'}：${message.replyTo.summary}]\n${message.text}`
+          : message.text
       }))
     : [{
         role: 'user',
-        content: messages.filter(message => message.from === 'user').at(-1)?.text || ''
+        content: latestUserText
       }];
   return {
     providerId: profile.providerId,
     profileId: profile.profileId,
-    system: buildChatSystemPrompt(config, character),
+    system: buildChatSystemPrompt(config, character, latestUserText),
     messages: history.filter(message => message.content)
   };
 }
@@ -182,11 +201,16 @@ function messagesFor(config, osState, character) {
 }
 
 function renderMessageActions(message, generating) {
-  if (message.id === 'welcome' || message.proactive || message.appearancePreview) return '';
+  if (message.id === 'welcome' || message.appearancePreview) return '';
   return `
     <span class="chat-message-actions">
+      <button type="button" data-chat-copy="${escapeHtml(message.id)}" title="复制" aria-label="复制消息">复制</button>
+      <button type="button" data-chat-quote="${escapeHtml(message.id)}" title="引用" aria-label="引用消息" ${generating ? 'disabled' : ''}>引用</button>
+      ${message.proactive && message.providerId === 'local-proactive' ? `
+        <button type="button" data-chat-proactive-retry="${escapeHtml(message.id)}" title="使用 AI 重新生成" aria-label="使用 AI 重新生成" ${generating ? 'disabled' : ''}>↻</button>
+      ` : ''}
       ${message.from === 'character' ? `
-        <button type="button" data-chat-retry="${escapeHtml(message.id)}" title="重新生成" aria-label="重新生成" ${generating ? 'disabled' : ''}>↻</button>
+        ${message.proactive ? '' : `<button type="button" data-chat-retry="${escapeHtml(message.id)}" title="重新生成" aria-label="重新生成" ${generating ? 'disabled' : ''}>↻</button>`}
       ` : ''}
       <button type="button" data-chat-delete="${escapeHtml(message.id)}" title="删除消息" aria-label="删除消息" ${generating ? 'disabled' : ''}>×</button>
     </span>
@@ -196,19 +220,28 @@ function renderMessageActions(message, generating) {
 function renderMessages(config, osState, character) {
   const avatar = getCharacterAvatar(character);
   const generating = generationSessions.has(runtimeKey(config, osState));
-  return messagesFor(config, osState, character).map(message => `
+  const session = currentSession(config, osState);
+  const all = messagesFor(config, osState, character);
+  const page = Math.max(1, Number(osState.chatMessagePages?.[session?.id]) || 1);
+  const visible = all.slice(-(page * 50));
+  const hasEarlier = all.length > visible.length;
+  return `${hasEarlier ? '<button class="chat-load-earlier" type="button" data-chat-load-earlier>查看更早消息</button>' : ''}${visible.map(message => `
     <div class="chat-message-row ${message.from === 'user' ? 'is-user' : 'is-character'}" data-message-id="${escapeHtml(message.id)}">
       ${message.from === 'character' ? `<img src="${avatar}" alt="" />` : ''}
       <div class="message ${message.from === 'user' ? 'sent' : 'received'}">
+        ${message.replyTo?.summary ? `<blockquote><strong>${escapeHtml(message.replyTo.sender || '引用')}</strong>${escapeHtml(message.replyTo.summary)}</blockquote>` : ''}
         <p>${escapeHtml(message.text)}</p>
         <span class="chat-message-meta">
           ${config.apps.chat.timestamps ? `<time>${escapeHtml(timeLabel(message.createdAt))}</time>` : ''}
-          ${message.stopped ? '<em>已停止</em>' : ''}
+          ${message.proactive && message.triggerLabel ? `<em>${escapeHtml(message.triggerLabel)}</em>` : ''}
+          ${message.requestStatus === 'pending' ? '<em>发送中</em>' : ''}
+          ${message.requestStatus === 'failed' ? '<em>发送失败</em>' : ''}
+          ${message.requestStatus === 'stopped' || message.stopped ? '<em>已停止</em>' : ''}
           ${renderMessageActions(message, generating)}
         </span>
       </div>
     </div>
-  `).join('');
+  `).join('')}`;
 }
 
 function renderHeader(theme, config, character, avatar, osState = {}) {
@@ -305,7 +338,7 @@ function setGeneratingUi(container, generating) {
   if (input) input.disabled = generating;
   if (sendButton) sendButton.hidden = generating;
   if (stopButton) stopButton.hidden = !generating;
-  container.querySelectorAll('[data-chat-quick], [data-chat-delete], [data-chat-retry], [data-chat-clear], [data-chat-voice], [data-chat-session-list]')
+  container.querySelectorAll('[data-chat-quick], [data-chat-delete], [data-chat-retry], [data-chat-proactive-retry], [data-chat-clear], [data-chat-voice], [data-chat-session-list]')
     .forEach(button => { button.disabled = generating; });
 }
 
@@ -320,7 +353,6 @@ async function autoWriteMemory(config, handlers, osState, {
   const latestConfig = handlers.getConfig?.() || config;
   if (
     !latestConfig.apps?.memory?.enabled
-    || !latestConfig.apps.memory.autoWrite
     || !latestConfig.apps?.chat?.ai?.enabled
   ) return;
 
@@ -354,10 +386,31 @@ async function autoWriteMemory(config, handlers, osState, {
       date: localDateKey(),
       characterId: character.id,
       source: 'chat-auto',
-      sourceMessageId
+      sourceMessageId,
+      importance: 3,
+      expiresAt: '',
+      sourceRef: { appId: 'chat', sourceId: sourceMessageId, label: '聊天消息' },
+      updatedAt: new Date().toISOString()
     };
-    osState.chatStatus = `已自动记住：${entry.title}`;
-    handlers.updatePath?.('apps.memory.entries', [entry, ...entries], { keepPhone: true });
+    if (currentConfig.apps.memory.autoWrite) {
+      osState.chatStatus = `已自动记住：${entry.title}`;
+      handlers.updatePath?.('apps.memory.entries', [entry, ...entries], { keepPhone: true });
+    } else {
+      const candidates = currentConfig.companion?.memoryCandidates || [];
+      if (candidates.some(item => item.sourceId === sourceMessageId && item.status === 'pending')) return;
+      handlers.updatePath?.('companion.memoryCandidates', [{
+        id: makeId('candidate'),
+        eventId: '',
+        characterId: character.id,
+        sourceApp: 'chat',
+        sourceId: sourceMessageId,
+        status: 'pending',
+        type: entry.type,
+        title: entry.title,
+        content: entry.content,
+        createdAt: entry.updatedAt
+      }, ...candidates], { keepPhone: true });
+    }
   } catch {
     // Auto memory is optional and must never interrupt the user's chat.
   }
@@ -375,12 +428,17 @@ function chatListSummary(config, osState, character) {
   return {
     text: latest?.text || greeting?.message || character.greeting || '点击开始聊天',
     updatedAt: latest?.createdAt || greeting?.createdAt || session?.updatedAt || '',
-    sessionCount: sessionsForCharacter(config.apps.chat, character.id).length
+    sessionCount: sessionsForCharacter(config.apps.chat, character.id).length,
+    unread: config.apps.chat.history === false ? 0 : messages.filter(message => (
+      message.from === 'character' && Date.parse(message.createdAt || 0) > Date.parse(session?.lastReadAt || 0)
+    )).length
   };
 }
 
 function renderCharacterChatList(config, osState, theme) {
-  const characters = [config.character, ...(config.characters || [])];
+  const characters = [config.character, ...(config.characters || [])]
+    .map(character => ({ character, summary: chatListSummary(config, osState, character) }))
+    .sort((left, right) => Date.parse(right.summary.updatedAt || 0) - Date.parse(left.summary.updatedAt || 0));
   return `
     <section class="phone-screen phone-chat chat-character-list-screen chat-layout-${theme}">
       ${renderStatusBar('chat-statusbar')}
@@ -390,8 +448,7 @@ function renderCharacterChatList(config, osState, theme) {
         <span>${characters.length} 位角色</span>
       </header>
       <div class="chat-character-list" role="list">
-        ${characters.map(character => {
-          const summary = chatListSummary(config, osState, character);
+        ${characters.map(({ character, summary }) => {
           const presence = characterPresence(config, character, osState);
           return `
             <button
@@ -409,7 +466,7 @@ function renderCharacterChatList(config, osState, theme) {
                 <small>${escapeHtml(summary.text)}</small>
                 <em>${escapeHtml(presence.label)} · ${summary.sessionCount} 个会话</em>
               </span>
-              <i>›</i>
+              ${summary.unread ? `<b class="chat-unread-badge">${Math.min(99, summary.unread)}</b>` : '<i>›</i>'}
             </button>
           `;
         }).join('')}
@@ -504,6 +561,7 @@ export const ChatApp = {
         </div>
         ${renderChatStatus(osState)}
         ${renderQuickReplies(config, generating)}
+        ${osState.chatReplyTo ? `<div class="chat-reply-preview"><span><strong>回复 ${escapeHtml(osState.chatReplyTo.sender || '消息')}</strong>${escapeHtml(osState.chatReplyTo.summary)}</span><button type="button" data-chat-quote-cancel aria-label="取消引用">×</button></div>` : ''}
         ${config.apps.chat.inputBox ? `
           <form class="functional-chat-composer" data-chat-form>
             ${config.apps.chat.voiceButton ? `
@@ -533,8 +591,14 @@ export const ChatApp = {
 
     container.querySelectorAll('[data-chat-character]').forEach(button => {
       button.addEventListener('click', () => {
+        const latest = handlers.getConfig?.() || config;
+        const selectedId = button.dataset.chatCharacter;
+        const selectedSession = activeChatSession(latest.apps.chat, selectedId);
+        if (latest.apps.chat.history && selectedSession) {
+          handlers.updatePath?.('apps.chat', markChatSessionRead(latest.apps.chat, selectedSession.id), { noRender: true });
+        }
         handlers.updatePhoneState?.({
-          chatCharacterId: button.dataset.chatCharacter,
+          chatCharacterId: selectedId,
           chatView: 'conversation',
           chatSessionDeleteConfirmId: null,
           chatStatus: ''
@@ -595,7 +659,8 @@ export const ChatApp = {
         characterId,
         title: `新会话 ${existing.length + 1}`,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
+        lastReadAt: now
       };
       osState.chatView = 'conversation';
       osState.chatSessionDeleteConfirmId = null;
@@ -611,12 +676,26 @@ export const ChatApp = {
     container.querySelectorAll('[data-chat-session-select]').forEach(button => {
       button.addEventListener('click', () => {
         const latest = handlers.getConfig?.() || config;
+        const selectedSessionId = button.dataset.chatSessionSelect;
         osState.chatView = 'conversation';
         osState.chatSessionDeleteConfirmId = null;
-        handlers.updatePath?.('apps.chat.activeSessionIds', {
-          ...(latest.apps.chat.activeSessionIds || {}),
-          [characterId]: button.dataset.chatSessionSelect
+        const readChat = markChatSessionRead(latest.apps.chat, selectedSessionId);
+        handlers.updatePath?.('apps.chat', {
+          ...readChat,
+          activeSessionIds: {
+            ...(readChat.activeSessionIds || {}),
+            [characterId]: selectedSessionId
+          }
         }, { keepPhone: true });
+      });
+    });
+
+    container.querySelector('[data-chat-load-earlier]')?.addEventListener('click', () => {
+      handlers.updatePhoneState?.({
+        chatMessagePages: {
+          ...(osState.chatMessagePages || {}),
+          [sessionId]: (Number(osState.chatMessagePages?.[sessionId]) || 1) + 1
+        }
       });
     });
     container.querySelectorAll('[data-chat-session-delete]').forEach(button => {
@@ -707,10 +786,24 @@ export const ChatApp = {
           from: 'character',
           text: answer,
           createdAt: new Date().toISOString(),
-          providerId: config.apps.chat.ai?.enabled ? providerId : 'local'
+          providerId: config.apps.chat.ai?.enabled ? providerId : 'local',
+          requestStatus: 'sent'
         };
+        if (config.apps.chat.history) {
+          handlers.emitCompanionEvent?.({
+            type: 'chat.character_message.completed',
+            characterId: character.id,
+            sourceApp: 'chat',
+            sourceId: assistantMessage.id,
+            occurredAt: assistantMessage.createdAt,
+            payload: { text: answer, sessionId }
+          });
+        }
         generationSessions.delete(key);
-        saveMessages([...currentMessages, assistantMessage], { keepPhone: true });
+        const completedMessages = currentMessages.map(message => message.requestStatus === 'pending'
+          ? { ...message, requestStatus: 'sent', errorCode: '' }
+          : message);
+        saveMessages([...completedMessages, assistantMessage], { keepPhone: true });
         void autoWriteMemory(config, handlers, osState, {
           character,
           providerId,
@@ -722,17 +815,23 @@ export const ChatApp = {
       } catch (error) {
         const stopped = error?.name === 'AbortError';
         const partial = session.partialText.trim();
+        const failedStatus = stopped ? 'stopped' : 'failed';
+        const markedMessages = currentMessages.map(message => message.requestStatus === 'pending'
+          ? { ...message, requestStatus: failedStatus, errorCode: stopped ? '' : String(error?.code || error?.status || 'AI_REQUEST_FAILED') }
+          : message);
         const nextMessages = partial
-          ? [...currentMessages, {
+          ? [...markedMessages, {
               id: makeId('msg'),
               characterId: key,
               from: 'character',
               text: partial,
               createdAt: new Date().toISOString(),
               providerId,
-              stopped
+              stopped,
+              requestStatus: stopped ? 'stopped' : 'failed',
+              errorCode: stopped ? '' : String(error?.code || error?.status || 'AI_REQUEST_FAILED')
             }]
-          : currentMessages;
+          : markedMessages;
         generationSessions.delete(key);
         osState.chatStatus = friendlyAiError(error);
         osState.chatStatusAction = stopped ? '' : chatFailureAction(error);
@@ -758,14 +857,28 @@ export const ChatApp = {
         characterId: key,
         from: 'user',
         text: value,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        requestStatus: 'pending',
+        errorCode: '',
+        replyTo: osState.chatReplyTo ? { ...osState.chatReplyTo } : null
       };
       const nextMessages = [...current, userMessage];
+      if (config.apps.chat.history) {
+        handlers.emitCompanionEvent?.({
+          type: 'chat.user_message.sent',
+          characterId: resolveChatCharacter(config, osState).id,
+          sourceApp: 'chat',
+          sourceId: userMessage.id,
+          occurredAt: userMessage.createdAt,
+          payload: { text: value, sessionId }
+        });
+      }
       if (input) input.value = '';
       osState.chatDrafts = {
         ...(osState.chatDrafts || {}),
         [key]: ''
       };
+      osState.chatReplyTo = null;
       const latest = handlers.getConfig?.() || config;
       handlers.updatePath?.('apps.chat.drafts', {
         ...(latest.apps.chat.drafts || {}),
@@ -794,7 +907,12 @@ export const ChatApp = {
     container.querySelector('[data-chat-retry-last]')?.addEventListener('click', async () => {
       const failed = osState.chatFailedRequest;
       if (!failed || failed.sessionId !== sessionId || failed.characterId !== characterId) return;
-      await startGeneration(savedMessages(handlers.getConfig?.() || config, osState));
+      const current = savedMessages(handlers.getConfig?.() || config, osState);
+      const retryMessages = current.map(message => message.id === failed.messageId
+        ? { ...message, requestStatus: 'pending', errorCode: '' }
+        : message);
+      saveMessages(retryMessages, { noRender: true });
+      await startGeneration(retryMessages);
     });
 
     container.querySelectorAll('[data-chat-quick]').forEach(button => {
@@ -803,10 +921,44 @@ export const ChatApp = {
 
     container.querySelectorAll('[data-chat-delete]').forEach(button => {
       button.addEventListener('click', () => {
+        handlers.removeCompanionSource?.('chat', button.dataset.chatDelete);
         const next = savedMessages(config, osState)
           .filter(message => message.id !== button.dataset.chatDelete);
         saveMessages(next, { keepPhone: true });
       });
+    });
+
+    container.querySelectorAll('[data-chat-copy]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const message = savedMessages(handlers.getConfig?.() || config, osState)
+          .find(item => item.id === button.dataset.chatCopy);
+        if (!message) return;
+        try {
+          await navigator.clipboard.writeText(message.text);
+          handlers.updatePhoneState?.({ chatStatus: '消息已复制。' });
+        } catch {
+          handlers.updatePhoneState?.({ chatStatus: '复制失败，请长按消息手动复制。' });
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-chat-quote]').forEach(button => {
+      button.addEventListener('click', () => {
+        const message = savedMessages(handlers.getConfig?.() || config, osState)
+          .find(item => item.id === button.dataset.chatQuote);
+        if (!message) return;
+        handlers.updatePhoneState?.({
+          chatReplyTo: {
+            messageId: message.id,
+            from: message.from,
+            sender: message.from === 'user' ? (resolveChatCharacter(config, osState).userName || '我') : resolveChatCharacter(config, osState).name,
+            summary: String(message.text || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+          }
+        });
+      });
+    });
+    container.querySelector('[data-chat-quote-cancel]')?.addEventListener('click', () => {
+      handlers.updatePhoneState?.({ chatReplyTo: null });
     });
 
     container.querySelectorAll('[data-chat-retry]').forEach(button => {
@@ -816,6 +968,7 @@ export const ChatApp = {
         if (targetIndex < 0) return;
         const nextMessages = current.slice(0, targetIndex);
         if (!nextMessages.some(message => message.from === 'user')) return;
+        current.slice(targetIndex).forEach(message => handlers.removeCompanionSource?.('chat', message.id));
         saveMessages(nextMessages, { noRender: true });
         const body = container.querySelector('[data-chat-body]');
         if (body) body.innerHTML = renderMessages(config, osState, resolveChatCharacter(config, osState));
@@ -824,12 +977,17 @@ export const ChatApp = {
       });
     });
 
+    container.querySelectorAll('[data-chat-proactive-retry]').forEach(button => {
+      button.addEventListener('click', () => handlers.regenerateProactiveMessage?.(button.dataset.chatProactiveRetry));
+    });
+
     container.querySelector('[data-chat-clear]')?.addEventListener('click', () => {
       if (!globalThis.confirm?.(`清空当前会话“${session?.title || '默认会话'}”的全部聊天记录？`)) return;
       generationSessions.get(key)?.controller.abort();
       osState.chatStatus = '';
       osState.chatStatusAction = '';
       osState.chatFailedRequest = null;
+      savedMessages(config, osState).forEach(message => handlers.removeCompanionSource?.('chat', message.id));
       saveMessages([], { keepPhone: true });
     });
 
@@ -895,6 +1053,11 @@ export const ChatApp = {
       speechSessions.get(key)?.stop();
     });
 
+    if (config.apps.chat.history && sessionId) {
+      const latest = handlers.getConfig?.() || config;
+      const readChat = markChatSessionRead(latest.apps.chat, sessionId);
+      if (readChat !== latest.apps.chat) handlers.updatePath?.('apps.chat', readChat, { noRender: true });
+    }
     scrollChatToLatest(container);
   }
 };

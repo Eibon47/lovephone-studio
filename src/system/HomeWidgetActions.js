@@ -12,6 +12,7 @@ import {
   toggleMusicPlayback
 } from '../services/musicService.js?v=app-config-91';
 import { readOptimizedImage } from '../services/imageUploadService.js?v=app-config-60';
+import { resolveCompositionBinding } from './customWidgetRuntime.js?v=app-config-104';
 
 let homePlaybackState = null;
 let clockTimer = null;
@@ -77,6 +78,37 @@ function updateVinylDom(container, state, track) {
     toggle.textContent = playing ? 'Ⅱ' : '▶';
     toggle.setAttribute('aria-label', playing ? '暂停' : '播放');
   }
+}
+
+function updateCompositionDom(container, config, osState) {
+  const widgets = config.theme?.customization?.widgets || [];
+  container.querySelectorAll('[data-composition-widget]').forEach(widgetNode => {
+    const widget = widgets.find(item => item.id === widgetNode.dataset.compositionWidget);
+    if (!widget) return;
+    widgetNode.querySelectorAll('[data-composition-element]').forEach(node => {
+      const element = widget.elements?.find(item => item.id === node.dataset.compositionElement);
+      if (!element) return;
+      if (element.type === 'musicControl') {
+        const label = node.querySelector('span');
+        if (label && element.action?.type === 'musicPlayPause') {
+          label.textContent = osState.musicPlayback?.status === 'playing' || osState.musicPlaying ? 'Ⅱ' : '▶';
+        }
+        return;
+      }
+      if (element.binding?.source === 'static') return;
+      const value = resolveCompositionBinding(element, config, osState);
+      if (element.type === 'image') {
+        const image = node.querySelector('img');
+        if (image && value) image.src = value;
+      } else if (element.type === 'progress') {
+        const fill = node.querySelector('.composition-progress-track i');
+        if (fill) fill.style.width = `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
+      } else {
+        const label = node.querySelector('span');
+        if (label) label.textContent = String(value ?? '');
+      }
+    });
+  });
 }
 
 async function controlVinyl(action, container, config, osState, handlers) {
@@ -207,6 +239,9 @@ function bindClock(container) {
     const dateNode = container.querySelector('[data-widget-clock-date]');
     if (timeNode) timeNode.textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
     if (dateNode) dateNode.textContent = now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+    const config = container.__lovePhoneConfig;
+    const osState = container.__lovePhoneState;
+    if (config && osState) updateCompositionDom(container, config, osState);
   };
   update();
   clockTimer = setInterval(update, 30000);
@@ -214,10 +249,17 @@ function bindClock(container) {
 
 function bindVinylPlayer(container, config, osState, handlers) {
   homePlaybackState = osState.musicPlayback || null;
-  if (!config.theme?.widgets?.vinyl?.enabled) return;
+  const hasMusicWidget = (config.theme?.customization?.widgets || []).some(widget =>
+    widget.kind === 'composition' && widget.elements?.some(element => element.binding?.source === 'music')
+  );
+  if (!config.theme?.widgets?.vinyl?.enabled && !hasMusicWidget) return;
   setMusicStateListener(result => {
     if (!container.isConnected || !result?.track) return;
     updateVinylDom(container, result.state, result.track);
+    osState.musicTrack = result.track;
+    osState.musicPlayback = result.state;
+    osState.musicPlaying = result.state?.status === 'playing';
+    updateCompositionDom(container, config, osState);
     handlers.updatePhoneState?.({
       musicTrack: result.track,
       musicPlayback: result.state,
@@ -227,10 +269,13 @@ function bindVinylPlayer(container, config, osState, handlers) {
 }
 
 export function bindHomeWidgetActions(container, config, osState, handlers = {}) {
+  container.__lovePhoneConfig = config;
+  container.__lovePhoneState = osState;
   const interactive = container.querySelectorAll(
     '[data-vinyl-control], [data-widget-open-app], [data-widget-dismiss], [data-photo-widget-upload], [data-photo-widget-input], [data-custom-widget-action]'
   );
   interactive.forEach(node => {
+    if (osState.widgetEditing && node.closest('[data-composition-element]')) return;
     node.addEventListener('pointerdown', event => event.stopPropagation());
   });
 
@@ -276,6 +321,7 @@ export function bindHomeWidgetActions(container, config, osState, handlers = {})
   container.querySelectorAll('[data-custom-widget-action]').forEach(button => {
     button.addEventListener('click', async event => {
       event.stopPropagation();
+      if (osState.widgetEditing) return;
       if (shouldSuppressDesktopClick()) return;
       const action = button.dataset.customWidgetAction;
       const target = button.dataset.customWidgetTarget;

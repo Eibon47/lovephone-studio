@@ -154,7 +154,45 @@ test('assistant rejects external image, code and unknown app operations', () => 
     ]
   }), config);
   assert.equal(response.operations.length, 1);
-  assert.deepEqual(response.operations[0].args.layout, { x: 0, y: 0, w: 6, h: 2 });
+  assert.deepEqual(response.operations[0].args.layout, { x: 0, y: 0, w: 12, h: 2 });
+});
+
+test('assistant can create and bind safe composition widget layers', () => {
+  const config = normalizeConfig(cloneConfig(defaultConfig));
+  const added = applyBuilderAssistantOperations(config, [
+    { tool: 'addWidget', args: { kind: 'custom', id: 'free' } }
+  ]);
+  const widget = added.config.theme.customization.widgets.at(-1);
+  const result = applyBuilderAssistantOperations(added.config, [
+    { tool: 'addWidgetElement', args: { widgetId: widget.id, elementType: 'text', name: '歌曲名' } }
+  ]);
+  const element = result.config.theme.customization.widgets.at(-1).elements[0];
+  const bound = applyBuilderAssistantOperations(result.config, [
+    { tool: 'bindWidgetElement', args: { widgetId: widget.id, elementId: element.id, source: 'music', field: 'primary', action: 'musicPlayPause', target: '' } }
+  ]);
+  const finalWidget = bound.config.theme.customization.widgets.at(-1);
+  assert.equal(finalWidget.kind, 'composition');
+  assert.equal(finalWidget.elements[0].binding.source, 'music');
+  assert.equal(finalWidget.permissions.data.includes('music'), true);
+  assert.equal(finalWidget.permissions.actions.includes('musicPlayPause'), true);
+});
+
+test('assistant aligns composition layers through the safe operation protocol', () => {
+  const config = normalizeConfig(cloneConfig(defaultConfig));
+  const added = applyBuilderAssistantOperations(config, [
+    { tool: 'addWidget', args: { kind: 'custom', id: 'text-columns' } }
+  ]);
+  const widget = added.config.theme.customization.widgets.at(-1);
+  const ids = widget.elements.filter(item => item.type === 'text').map(item => item.id);
+  const aligned = applyBuilderAssistantOperations(added.config, [{
+    tool: 'alignWidgetElements',
+    args: { widgetId: widget.id, elementIds: ids, alignment: 'top' }
+  }]);
+  const frames = aligned.config.theme.customization.widgets.at(-1).elements
+    .filter(item => ids.includes(item.id))
+    .map(item => item.frame.y);
+  assert.equal(new Set(frames).size, 1);
+  assert.equal(aligned.previewAppId, 'home');
 });
 
 test('assistant connection settings never retain an API key in phone config', () => {

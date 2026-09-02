@@ -2,6 +2,7 @@ import { activeCharacter, localDateKey, makeId } from '../apps/appData.js?v=app-
 import { streamAiChat } from './aiService.js?v=app-config-57';
 import { friendlyAiError } from './aiErrors.js?v=app-config-36';
 import { resolveCharacterAiProfile } from './aiProfileScope.js?v=app-config-45';
+import { isIntegrationEnabled } from './companionPolicyService.js';
 
 const inFlightGreetings = new Set();
 
@@ -50,6 +51,11 @@ export function buildGreetingRequest(config, {
   const label = greetingLabel(period);
   const memories = memoriesFor(config, character.id);
   const profile = resolveCharacterAiProfile(config, character);
+  const latestMood = isIntegrationEnabled(config, 'moodAwareGreetings')
+    ? (config.apps?.goodnight?.entries || [])
+      .filter(item => (item.characterId || config.character.id) === character.id && item.mood)
+      .sort((left, right) => Date.parse(right.createdAt || right.date || 0) - Date.parse(left.createdAt || left.date || 0))[0]?.mood
+    : '';
   return {
     providerId: profile.providerId,
     profileId: profile.profileId,
@@ -59,6 +65,7 @@ export function buildGreetingRequest(config, {
       `说话风格：${character.speakingStyle || '自然、简短、温柔'}。`,
       `角色设定：${character.definition || '稳定陪伴用户，尊重现实边界。'}`,
       memories ? `可以参考这些记忆：\n${memories}` : '',
+      latestMood ? `用户最近记录的心情是“${latestMood}”，只调整语气，不要声称监控到用户。` : '',
       `请写一句${label}问候，30 到 70 个中文字符。`,
       '语气自然，不使用标题、引号或“早安问候：”等前缀，不虚构具体事件，不诱导依赖。'
     ].filter(Boolean).join('\n'),
@@ -118,22 +125,6 @@ async function generateGreeting(config, character, period) {
   }
 }
 
-function showSystemNotification(config, greeting) {
-  if (
-    !config.apps?.goodnight?.notifications
-    || typeof Notification === 'undefined'
-    || Notification.permission !== 'granted'
-  ) return;
-  try {
-    new Notification(`${greeting.characterName}的${greetingLabel(greeting.period)}`, {
-      body: greeting.message,
-      tag: greeting.key
-    });
-  } catch {
-    // The greeting remains available in the app if the browser rejects a notification.
-  }
-}
-
 export async function generateAndStoreGreeting(config, handlers, osState = {}, {
   period = greetingPeriodFor(),
   force = false
@@ -178,12 +169,24 @@ export async function generateAndStoreGreeting(config, handlers, osState = {}, {
       greeting,
       ...currentGreetings.filter(item => item.key !== key)
     ].slice(0, 120);
+    handlers.emitCompanionEvent?.({
+      type: 'greeting.generated',
+      characterId: character.id,
+      sourceApp: 'goodnight',
+      sourceId: greeting.id,
+      dedupeKey: `greeting:${greeting.key}`,
+      occurredAt: greeting.createdAt,
+      payload: {
+        period: greeting.period,
+        message: greeting.message,
+        providerId: greeting.providerId
+      }
+    });
     handlers.updatePhoneState?.({
       greetingGeneratingKey: null,
       greetingStatus: generated.warning || `${greetingLabel(period)}问候已生成。`
     });
     handlers.updatePath?.('apps.goodnight.greetings', next, { keepPhone: true });
-    showSystemNotification(currentConfig, greeting);
     return greeting;
   } finally {
     inFlightGreetings.delete(key);

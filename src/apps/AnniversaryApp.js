@@ -167,6 +167,20 @@ export const AnniversaryApp = {
         yearly: form.elements.yearly.checked
       };
       const next = id ? events.map(item => item.id === id ? entry : item) : [entry, ...events];
+      const characterId = config.apps.character.activeCharacterId || config.character.id;
+      handlers.emitCompanionEvent?.({
+        type: 'anniversary.event.saved',
+        characterId,
+        sourceApp: 'anniversary',
+        sourceId: entry.id,
+        dedupeKey: `anniversary:${characterId}:${entry.id}`,
+        payload: {
+          title: entry.title,
+          date: entry.date,
+          yearly: entry.yearly,
+          reminderDays: config.apps.anniversary.reminderDays
+        }
+      });
       handlers.updatePhoneState?.({
         anniversaryEditingId: null,
         anniversaryNotice: id ? '纪念日已更新。' : '纪念日已添加。',
@@ -194,6 +208,7 @@ export const AnniversaryApp = {
     container.querySelector('[data-anniversary-delete-confirm]')?.addEventListener('click', event => {
       const result = removeItemWithUndo(events, event.currentTarget.dataset.anniversaryDeleteConfirm);
       if (!result.undo) return;
+      handlers.removeCompanionSource?.('anniversary', result.undo.item.id);
       handlers.updatePhoneState?.({
         anniversaryDeleteConfirmId: null,
         anniversaryEditingId: null,
@@ -206,6 +221,20 @@ export const AnniversaryApp = {
       const latest = handlers.getConfig?.() || config;
       const current = Array.isArray(latest.apps.anniversary.events) ? latest.apps.anniversary.events : [];
       const next = restoreItemFromUndo(current, osState.anniversaryUndo);
+      const restoredEntry = osState.anniversaryUndo?.item;
+      if (restoredEntry) {
+        const characterId = latest.apps.character.activeCharacterId || latest.character.id;
+        handlers.emitCompanionEvent?.({
+          type: 'anniversary.event.saved', characterId, sourceApp: 'anniversary',
+          sourceId: restoredEntry.id, dedupeKey: `anniversary:${characterId}:${restoredEntry.id}`,
+          payload: {
+            title: restoredEntry.title,
+            date: restoredEntry.date,
+            yearly: restoredEntry.yearly,
+            reminderDays: latest.apps.anniversary.reminderDays
+          }
+        });
+      }
       handlers.updatePhoneState?.({
         anniversaryUndo: null,
         anniversaryNotice: '已恢复纪念日。'

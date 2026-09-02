@@ -26,6 +26,7 @@ import {
   usesBuiltInMusicGateway
 } from '../services/musicService.js?v=app-config-91';
 import { searchWeatherCity } from '../services/weatherService.js?v=app-config-52';
+import { integrationRecordSummary } from '../services/companionPolicyService.js';
 
 const colors = ['#7fb59a', '#6b9ec9', '#9a88b8', '#d39c77', '#d98fa5'];
 
@@ -107,9 +108,43 @@ function renderSettingsCategory(page, config, osState) {
   if (page === 'runtime') return `${renderPhoneManagement(osState)}${renderRuntimeInfo(config, osState)}${renderStartupHealth(osState)}`;
   if (page === 'services') return `${config.apps.settings.apiProfiles ? renderAISettings(config, osState) : ''}${renderMusicSettings(config, osState)}${renderWeatherSettings(config)}`;
   if (page === 'appearance') return config.apps.settings.themeControls ? renderAppearanceSettings(config) : '<p class="settings-security-note">外观控制已在工坊中关闭。</p>';
-  if (page === 'apps') return `${renderCustomAppSettings(osState)}${renderMemorySettings(config)}${renderCompanionDataSettings(config)}`;
+  if (page === 'apps') return `${renderProactiveSettings(config)}${renderIntegrationSettings(config)}${renderCustomAppSettings(osState)}${renderMemorySettings(config)}${renderCompanionDataSettings(config)}`;
   if (page === 'data') return `${renderDataSettings(config)}${renderDangerSettings()}`;
   return renderSettingsCategories(config, osState);
+}
+
+function renderProactiveSettings(config) {
+  const policy = config.companion?.proactive?.defaults || {};
+  return settingsGroup('◌', '主动陪伴', '全局默认规则；每个角色还可以单独覆盖', `
+    ${settingToggle('companion.proactive.defaults.enabled', '主动陪伴总开关', policy.enabled !== false, '只在网页打开或恢复前台时执行，不会在网页关闭时推送。')}
+    ${settingToggle('companion.proactive.defaults.emotionFollowUp', '情绪回访', policy.emotionFollowUp !== false, '用户提到明显情绪后，稍后自然问候一次。')}
+    ${settingInput('companion.proactive.defaults.emotionFollowUpMinutes', '回访等待时间', policy.emotionFollowUpMinutes || 30, { type: 'number', desc: '5–720 分钟' })}
+    ${settingInput('companion.proactive.defaults.dailyLimit', '每个角色每天最多', policy.dailyLimit || 3, { type: 'number', desc: '包括普通关怀和纪念日提醒' })}
+    ${settingToggle('companion.proactive.defaults.suppressWhileUnanswered', '上一条未回复时不连续关怀', policy.suppressWhileUnanswered !== false, '纪念日提醒仍可发送，但也受每日上限控制。')}
+    ${settingToggle('companion.proactive.defaults.quietHours.enabled', '启用安静时段', policy.quietHours?.enabled !== false)}
+    ${settingInput('companion.proactive.defaults.quietHours.start', '安静时段开始', policy.quietHours?.start || '23:00', { type: 'time' })}
+    ${settingInput('companion.proactive.defaults.quietHours.end', '安静时段结束', policy.quietHours?.end || '08:00', { type: 'time' })}
+    ${settingToggle('companion.proactive.defaults.morningGreeting', '早安问候', policy.morningGreeting !== false)}
+    ${settingToggle('companion.proactive.defaults.nightGreeting', '晚安问候', policy.nightGreeting !== false)}
+    ${settingToggle('companion.proactive.defaults.diaryResponse', '日记回应', policy.diaryResponse !== false, '还需单独授权“日记参与陪伴”。')}
+    ${settingToggle('companion.proactive.defaults.anniversaryReminder', '纪念日提醒', policy.anniversaryReminder !== false, '还需单独授权“纪念日参与陪伴”。')}
+  `);
+}
+
+function renderIntegrationSettings(config) {
+  const items = [
+    ['musicContext', '音乐参与聊天', '读取最近播放歌曲，作为本轮聊天的可选上下文，不自动发消息。'],
+    ['diaryCompanion', '日记参与陪伴', '读取日记，生成待确认记忆和延迟回应。'],
+    ['anniversaryCompanion', '纪念日参与陪伴', '读取纪念日，生成待确认记忆和聊天提醒。'],
+    ['moodAwareGreetings', '心情影响问候', '读取最近心情，只用于调整早安和晚安语气。'],
+    ['relationshipDesktop', '关系状态同步桌面', '让桌面角色状态和关系组件读取互动信号。']
+  ];
+  return settingsGroup('↔', 'App 联动授权', '启用 App 不等于授权；五项默认全部关闭', items.map(([key, label, desc]) => {
+    const summary = integrationRecordSummary(config, key);
+    const count = summary.events + summary.tasks + summary.memories;
+    return `${settingToggle(`companion.integrations.${key}`, label, config.companion?.integrations?.[key] === true, desc)}
+      ${count ? `<button class="settings-secondary-button" type="button" data-integration-clean="${key}">清理该联动产生的 ${count} 条记录</button>` : ''}`;
+  }).join(''));
 }
 
 function renderCustomAppSettings(osState = {}) {
@@ -543,6 +578,15 @@ export const SettingsApp = {
     container.querySelectorAll('[data-settings-toggle]').forEach(input => {
       input.addEventListener('change', () => {
         handlers.updatePath?.(input.dataset.settingsToggle, input.checked, { keepPhone: true });
+      });
+    });
+    container.querySelectorAll('[data-integration-clean]').forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.integrationClean;
+        const summary = integrationRecordSummary(handlers.getConfig?.() || config, key);
+        const count = summary.events + summary.tasks + summary.memories;
+        if (!globalThis.confirm?.(`清理这项联动产生的 ${count} 条事件、任务和记忆？原始日记、纪念日或音乐不会删除。`)) return;
+        handlers.clearCompanionIntegration?.(key);
       });
     });
 

@@ -4,6 +4,9 @@ import { renderStatusBar } from '../system/StatusBar.js';
 import { getAppTheme } from '../system/appAppearance.js?v=app-config-17';
 import { getAiProvider, selectedAiProviders } from '../config/aiProviderCatalog.js?v=app-config-35';
 import { characterPresence } from '../services/characterPresenceService.js?v=app-config-1';
+import { createUniqueCharacterId } from '../services/characterIdentityService.js';
+import { characterDataSummary, createCharacterPackage, downloadCharacterPackage, parseCharacterPackage } from '../services/characterPackageService.js';
+import { resolveProactivePolicy } from '../services/companionPolicyService.js';
 
 const statusLabels = {
   mood: '心情稳定',
@@ -106,23 +109,10 @@ function renderTags(tags = []) {
 function renderCharacterList(app, config, appConfig, osState = {}) {
   const characters = allCharacters(config);
   const activeCharacterId = config.apps?.character?.activeCharacterId || config.character.id;
+  const activeCharacterIndex = Math.max(0, characters.findIndex(character => character.id === activeCharacterId));
   const canAdd = characters.length < (appConfig.maxCharacters || 3);
   const theme = getAppTheme(config, app.id);
-  const titleMap = {
-    wechat: '通讯录',
-    qq: '联系人',
-    instagram: '角色',
-    x: '角色'
-  };
-
-  const themePrelude = theme === 'wechat' ? `
-    <div class="wechat-directory-tools">
-      <span><i>＋</i>新的角色</span>
-      <span><i>群</i>角色分组</span>
-      <span><i>签</i>标签</span>
-    </div>
-    <div class="character-section-label">A</div>
-  ` : theme === 'qq' ? `
+  const themePrelude = theme === 'qq' ? `
     <div class="qq-contact-search">搜索角色、状态和设定</div>
     <div class="qq-contact-tabs"><span class="active">好友</span><span>分组</span><span>设备</span><span>通讯录</span></div>
     <div class="character-section-label">特别关心 ${characters.length}</div>
@@ -142,24 +132,24 @@ function renderCharacterList(app, config, appConfig, osState = {}) {
   ` : '';
 
   return `
-    <section class="phone-screen phone-character-app character-layout-${theme}">
+    <section class="phone-screen phone-character-app character-list-view character-layout-${theme}">
       ${renderStatusBar('chat-statusbar')}
       <header class="app-top app-top-actions">
         <button class="chat-back" type="button" data-go-home aria-label="返回桌面">‹</button>
-        <h3>${escapeHtml(titleMap[theme] || app.name)}</h3>
+        <h3>${escapeHtml(app.name || '角色')}</h3>
         <button class="app-top-icon" type="button" data-character-add ${canAdd ? '' : 'disabled'} aria-label="新增角色">+</button>
       </header>
       ${renderCharacterStatus(appConfig, config, osState, config.character)}
       ${themePrelude}
       <div class="character-list-phone">
         ${characters.map((character, index) => `
-          <button class="character-list-item ${character.id === activeCharacterId ? 'is-active' : ''}" type="button" data-character-open="${index}" data-character-id="${escapeHtml(character.id)}">
+          <button class="character-list-item ${index === activeCharacterIndex ? 'is-active' : ''}" type="button" data-character-open="${index}" data-character-id="${escapeHtml(character.id)}">
             <img src="${getCharacterAvatar(character)}" alt="" />
             <span>
               <strong>${escapeHtml(character.name || `角色 ${index + 1}`)}</strong>
               <small>${escapeHtml(characterPresence(config, character, osState).label)} · ${escapeHtml(character.relationship || '陪伴角色')}</small>
             </span>
-            <em>${character.id === activeCharacterId ? '当前' : '›'}</em>
+            <em>${index === activeCharacterIndex ? '当前' : '›'}</em>
           </button>
         `).join('')}
       </div>
@@ -208,12 +198,13 @@ function renderAvatarEditor(character, index) {
     </section>`;
 }
 
-function renderDeleteControls(character, characterCount, osState) {
+function renderDeleteControls(config, character, characterCount, osState) {
   if (characterCount <= 1) return '';
   if (osState.characterDeleteConfirmId === character.id) {
+    const summary = characterDataSummary(config, character.id);
     return `
       <div class="character-delete-confirm">
-        <p>删除后，这个角色的聊天、未发送草稿、记忆、日记和问候记录都会一起清除。</p>
+        <p>将清除 ${summary.sessions} 个会话、${summary.messages} 条消息、${summary.memories} 条记忆、${summary.diaries} 篇日记、${summary.tasks} 个任务和 ${summary.notifications} 条通知。</p>
         <button type="button" data-character-delete-cancel>取消</button>
         <button type="button" data-character-delete-confirm="${escapeHtml(character.id)}">确认删除</button>
       </div>`;
@@ -222,6 +213,41 @@ function renderDeleteControls(character, characterCount, osState) {
     <button class="character-delete-button" type="button" data-character-delete="${escapeHtml(character.id)}">
       删除这个角色
     </button>`;
+}
+
+function renderRolePackageTools(character) {
+  return `<section class="character-package-tools">
+    <header><strong>角色备份</strong><small>不会包含 API Key、Cookie 或音乐文件</small></header>
+    <div class="character-package-options">
+      <label><input type="checkbox" data-role-export-include="chat" />聊天</label>
+      <label><input type="checkbox" data-role-export-include="memory" />记忆</label>
+      <label><input type="checkbox" data-role-export-include="diary" />日记</label>
+    </div>
+    <div class="character-management-actions">
+      <button type="button" data-role-export="${escapeHtml(character.id)}">导出角色</button>
+      <label class="character-role-import">导入角色<input type="file" accept=".json,application/json" data-role-import /></label>
+    </div>
+  </section>`;
+}
+
+function renderProactiveOverride(config, character) {
+  const raw = config.companion?.proactive?.characterOverrides?.[character.id];
+  const policy = resolveProactivePolicy(config, character.id);
+  const useGlobal = raw?.useGlobal !== false;
+  return `<section class="character-proactive-settings">
+    <header><strong>主动陪伴</strong><small>${useGlobal ? '跟随全局设置' : '这个角色使用独立规则'}</small></header>
+    <label><input type="checkbox" data-role-proactive="useGlobal" ${useGlobal ? 'checked' : ''} />使用全局设置</label>
+    <div ${useGlobal ? 'hidden' : ''}>
+      <label><input type="checkbox" data-role-proactive="enabled" ${policy.enabled ? 'checked' : ''} />允许主动陪伴</label>
+      <label><span>每天最多</span><input type="number" min="1" max="20" value="${policy.dailyLimit}" data-role-proactive="dailyLimit" /></label>
+      <label><span>情绪回访（分钟）</span><input type="number" min="5" max="720" value="${policy.emotionFollowUpMinutes}" data-role-proactive="emotionFollowUpMinutes" /></label>
+      <label><span>安静时段</span><input type="time" value="${policy.quietHours.start}" data-role-proactive="quietStart" /><input type="time" value="${policy.quietHours.end}" data-role-proactive="quietEnd" /></label>
+      <label><input type="checkbox" data-role-proactive="morningGreeting" ${policy.morningGreeting ? 'checked' : ''} />早安</label>
+      <label><input type="checkbox" data-role-proactive="nightGreeting" ${policy.nightGreeting ? 'checked' : ''} />晚安</label>
+      <label><input type="checkbox" data-role-proactive="diaryResponse" ${policy.diaryResponse ? 'checked' : ''} />日记回应</label>
+      <label><input type="checkbox" data-role-proactive="anniversaryReminder" ${policy.anniversaryReminder ? 'checked' : ''} />纪念日提醒</label>
+    </div>
+  </section>`;
 }
 
 function roleEntryCount(entries, characterId, fallbackCharacterId) {
@@ -279,6 +305,8 @@ function renderCharacterDetail(app, config, osState, appConfig) {
       </div>
       ${renderCharacterTools(appConfig, character, config)}
       ${renderAvatarEditor(character, index)}
+      ${renderProactiveOverride(config, character)}
+      ${renderRolePackageTools(character)}
       ${osState.characterNotice ? `<p class="character-notice">${escapeHtml(osState.characterNotice)}</p>` : ''}
       <div class="phone-editor">
         <label>
@@ -324,7 +352,7 @@ function renderCharacterDetail(app, config, osState, appConfig) {
       <div class="character-tags-phone" data-character-tags>
         ${renderTags(tags)}
       </div>
-      ${renderDeleteControls(character, characters.length, osState)}
+      ${renderDeleteControls(config, character, characters.length, osState)}
     </section>
   `;
 }
@@ -350,7 +378,7 @@ function syncCharacterPreview(container, config, osState) {
 function newCharacterTemplate(config, nextNumber) {
   return {
     ...config.character,
-    id: `character-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: createUniqueCharacterId(allCharacters(config)),
     name: `新角色 ${nextNumber}`,
     relationship: '待设定',
     personality: ['待了解'],
@@ -462,6 +490,44 @@ export const CharacterApp = {
     });
     container.querySelector('[data-character-delete-confirm]')?.addEventListener('click', event => {
       handlers.deleteCharacter?.(event.currentTarget.dataset.characterDeleteConfirm);
+    });
+
+    container.querySelector('[data-role-export]')?.addEventListener('click', event => {
+      const includes = Object.fromEntries([...container.querySelectorAll('[data-role-export-include]')]
+        .map(input => [input.dataset.roleExportInclude, input.checked]));
+      const payload = createCharacterPackage(handlers.getConfig?.() || config, event.currentTarget.dataset.roleExport, includes);
+      downloadCharacterPackage(payload, payload.character.name || 'lovephone-role');
+      handlers.updatePhoneState?.({ characterNotice: '角色备份已下载。' });
+    });
+    container.querySelector('[data-role-import]')?.addEventListener('change', async event => {
+      const file = event.currentTarget.files?.[0];
+      if (!file) return;
+      try {
+        const parsed = parseCharacterPackage(await file.text());
+        const summary = `导入“${parsed.character.name}”？包含 ${parsed.summary.messages} 条聊天、${parsed.summary.memories} 条记忆、${parsed.summary.diaries} 篇日记。角色会使用新的编号，不覆盖现有角色。`;
+        if (!globalThis.confirm?.(summary)) return;
+        handlers.importCharacterPackage?.(parsed);
+      } catch (error) {
+        handlers.updatePhoneState?.({ characterNotice: error.message || '角色文件导入失败。' });
+      }
+    });
+
+    container.querySelectorAll('[data-role-proactive]').forEach(input => {
+      input.addEventListener('change', () => {
+        const latest = handlers.getConfig?.() || config;
+        const character = allCharacters(latest)[selectedIndex(osState, latest)];
+        if (!character) return;
+        const current = latest.companion?.proactive?.characterOverrides?.[character.id] || { useGlobal: true };
+        const key = input.dataset.roleProactive;
+        const patch = { ...current };
+        if (key === 'quietStart' || key === 'quietEnd') {
+          patch.quietHours = { ...(current.quietHours || {}), [key === 'quietStart' ? 'start' : 'end']: input.value, enabled: true };
+        } else patch[key] = input.type === 'checkbox' ? input.checked : Number(input.value);
+        handlers.updatePath?.('companion.proactive.characterOverrides', {
+          ...(latest.companion?.proactive?.characterOverrides || {}),
+          [character.id]: patch
+        }, { keepPhone: true });
+      });
     });
 
     container.querySelectorAll('[data-phone-field]').forEach(input => {

@@ -1,12 +1,12 @@
 import { renderAppRouter, bindAppRouter } from './AppRouter.js?v=app-config-101';
-import { bindGridStackWidgets, shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-62';
-import { renderHomeScreen } from './HomeScreen.js?v=app-config-103';
+import { bindGridStackWidgets, shouldSuppressDesktopClick } from './GridStackWidgets.js?v=app-config-71';
+import { renderHomeScreen } from './HomeScreen.js?v=app-config-115';
 import { bindHomeWidgetActions } from './HomeWidgetActions.js?v=app-config-92';
+import { bindCompositionWidgetEditor } from './CompositionWidgetEditor.js?v=app-config-104';
 import { escapeHtml } from './html.js';
 import { getAppTheme } from './appAppearance.js?v=app-config-71';
 import { bindLiveWeather } from '../services/weatherService.js?v=app-config-21';
 import { syncScheduledGreeting } from '../services/greetingService.js?v=app-config-45';
-import { syncAnniversaryReminders } from '../services/anniversaryService.js?v=app-config-44';
 import { getCustomizationRuntime } from './customizationRuntime.js?v=app-config-83';
 
 export function renderLovePhoneOS(container, config, osState, handlers = {}) {
@@ -31,7 +31,7 @@ export function renderLovePhoneOS(container, config, osState, handlers = {}) {
       </div>
       ${customization.scopedCss ? `<style data-lovephone-custom-css>${customization.scopedCss}</style>` : ''}
       <div
-        class="phone-frame frame-${escapeHtml(config.theme.phoneFrame)} font-${escapeHtml(config.theme.fontStyle)} surface-basic icon-set-${escapeHtml(iconSet)} widget-style-${escapeHtml(widgetStyle)} app-theme-${escapeHtml(appTheme)} ${customization.classes.join(' ')} ${customization.appThemeEnabled ? 'custom-app-theme' : ''}"
+        class="phone-frame frame-${escapeHtml(config.theme.phoneFrame)} font-${escapeHtml(config.theme.fontStyle)} surface-basic icon-set-${escapeHtml(iconSet)} widget-style-${escapeHtml(widgetStyle)} app-theme-${escapeHtml(appTheme)} ${customization.classes.join(' ')} ${customization.appThemeEnabled ? 'custom-app-theme' : ''} ${osState.widgetEditing ? 'widget-editing' : ''}"
         data-current-app="${escapeHtml(currentApp)}"
         style="${style}"
       >
@@ -101,8 +101,11 @@ export function renderLovePhoneOS(container, config, osState, handlers = {}) {
     });
     container.querySelectorAll('[data-phone-notice-open]').forEach(button => {
       button.addEventListener('click', () => {
-        handlers.openPhoneNotification?.(button.dataset.phoneNoticeOpen, button.dataset.phoneNoticeCharacter);
+        handlers.openPhoneNotification?.(button.dataset.phoneNoticeId, button.dataset.phoneNoticeOpen, button.dataset.phoneNoticeCharacter);
       });
+    });
+    container.querySelector('[data-phone-notice-read-all]')?.addEventListener('click', () => {
+      handlers.markAllPhoneNotificationsRead?.();
     });
     container.querySelectorAll('[data-phone-setup-action]').forEach(button => {
       button.addEventListener('click', () => {
@@ -112,10 +115,10 @@ export function renderLovePhoneOS(container, config, osState, handlers = {}) {
     container.querySelector('[data-phone-setup-dismiss]')?.addEventListener('click', () => {
       handlers.dismissPhoneSetup?.();
     });
-    bindGridStackWidgets(container, config, handlers);
+    bindGridStackWidgets(container, config, handlers, osState);
     bindLiveWeather(container, config);
     bindHomeWidgetActions(container, config, osState, handlers);
+    bindCompositionWidgetEditor(container, osState, handlers);
   }
   syncScheduledGreeting(config, handlers, osState);
-  syncAnniversaryReminders(config, handlers);
 }

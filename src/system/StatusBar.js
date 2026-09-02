@@ -11,7 +11,6 @@ export function renderStatusBar(extraClass = '', options = {}) {
   return `
     <div class="phone-status ${extraClass}">
       <span>${getTimeLabel()}</span>
-      <span class="status-icons">▮⌁▱</span>
       ${options.showNotifications ? `
         <button class="phone-notice-trigger ${count ? 'has-notices' : ''}" type="button" data-phone-notice-toggle aria-label="查看通知">
           <i></i>${count ? `<b>${count > 9 ? '9+' : count}</b>` : ''}

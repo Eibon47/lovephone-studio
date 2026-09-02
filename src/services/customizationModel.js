@@ -1,8 +1,15 @@
+import {
+  createCompositionElement,
+  createCompositionWidget,
+  migrateLegacyBuiltinWidgets,
+  normalizeCompositionWidget
+} from './compositionWidgetModel.js?v=app-config-108';
+
 const IMAGE_DATA_URL = /^data:image\/(?:png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=\r\n]+$/;
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,80}$/;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-export const CUSTOMIZATION_VERSION = 2;
+export const CUSTOMIZATION_VERSION = 3;
 export const CUSTOM_WIDGET_SOURCES = [
   'time', 'date', 'weather', 'activeCharacter', 'music',
   'anniversary', 'diary', 'memory', 'mood'
@@ -875,7 +882,54 @@ function normalizeAppThemes(value = {}) {
 
 function normalizeWidget(value, index) {
   const source = objectValue(value);
+  if (source.mode !== 'code' && (source.kind === 'composition' || Array.isArray(source.elements))) {
+    return normalizeCompositionWidget(source, index);
+  }
+  if (source.mode !== 'code') {
+    const composition = createCompositionWidget('free', index, idValue(source.id, `custom-widget-${index + 1}`));
+    const legacyType = CUSTOM_WIDGET_TYPES.includes(source.type) ? source.type : 'text';
+    const elementType = legacyType === 'image' ? 'image' : legacyType === 'progress' ? 'progress' : 'text';
+    const legacyElement = createCompositionElement(elementType, 0);
+    legacyElement.name = stringValue(source.name, `元素 ${index + 1}`, 60);
+    legacyElement.content = stringValue(source.prefix, '', 40) || stringValue(source.name, '', 60);
+    legacyElement.asset = imageValue(source.image);
+    legacyElement.binding = {
+      source: CUSTOM_WIDGET_SOURCES.includes(source.dataSource) ? source.dataSource : 'static',
+      field: elementType === 'image' ? 'image' : elementType === 'progress' ? 'progress' : 'primary'
+    };
+    legacyElement.action = {
+      type: CUSTOM_WIDGET_ACTIONS.includes(source.action) ? source.action : 'none',
+      target: idValue(source.actionTarget)
+    };
+    legacyElement.frame = { x: 60, y: 80, w: 880, h: 840, rotation: 0, zIndex: 1 };
+    legacyElement.style = {
+      ...legacyElement.style,
+      color: colorValue(source.style?.text, '#183629'),
+      background: elementType === 'image' ? 'transparent' : colorValue(source.style?.background, 'transparent'),
+      radius: numberValue(source.style?.radius, 16, 0, 160)
+    };
+    return normalizeCompositionWidget({
+      ...composition,
+      name: stringValue(source.name, `Widget ${index + 1}`, 60),
+      templateId: CUSTOM_WIDGET_TEMPLATE_IDS.has(source.templateId) ? source.templateId : 'free',
+      enabled: source.enabled !== false,
+      layout: {
+        x: (Number(source.layout?.x) || 0) * 3,
+        y: (Number(source.layout?.y) || 0) * 3,
+        w: (Number(source.layout?.w) || 2) * 3,
+        h: (Number(source.layout?.h) || 2) * 3
+      },
+      canvas: {
+        background: colorValue(source.style?.background, '#fffdf6'),
+        radius: numberValue(source.style?.radius, 16, 0, 160),
+        opacity: 100,
+        overflow: 'hidden'
+      },
+      elements: [legacyElement]
+    }, index);
+  }
   const layout = objectValue(source.layout);
+  const gridFactor = source.gridVersion === 12 ? 1 : 3;
   const style = objectValue(source.style);
   const rawCode = objectValue(source.code);
   const codeResult = validateCustomWidgetCode(rawCode);
@@ -885,8 +939,12 @@ function normalizeWidget(value, index) {
     return safeName && safeImage ? [[safeName, safeImage]] : [];
   }));
   const templateId = CUSTOM_WIDGET_TEMPLATE_IDS.has(source.templateId) ? source.templateId : 'custom';
+  const codeLayoutWidth = Math.round(numberValue(Number(layout.w) * gridFactor, 6, 2, 12));
+  const codeLayoutHeight = Math.round(numberValue(Number(layout.h) * gridFactor, 6, 2, 24));
   return {
     id: idValue(source.id, `custom-widget-${index + 1}`),
+    kind: 'code',
+    gridVersion: 12,
     name: stringValue(source.name, `Widget ${index + 1}`, 60),
     enabled: source.enabled !== false,
     templateId,
@@ -900,10 +958,10 @@ function normalizeWidget(value, index) {
     prefix: stringValue(source.prefix, '', 40),
     suffix: stringValue(source.suffix, '', 40),
     layout: {
-      x: Math.round(numberValue(layout.x, 0, 0, 5)),
-      y: Math.round(numberValue(layout.y, index * 2, 0, 100)),
-      w: Math.round(numberValue(layout.w, 2, 1, 6)),
-      h: Math.round(numberValue(layout.h, 2, 1, 6))
+      x: Math.round(numberValue(Number(layout.x) * gridFactor, 0, 0, 12 - codeLayoutWidth)),
+      y: Math.round(numberValue(Number(layout.y) * gridFactor, Math.min(index * 6, 96 - codeLayoutHeight), 0, 96 - codeLayoutHeight)),
+      w: codeLayoutWidth,
+      h: codeLayoutHeight
     },
     style: {
       background: colorValue(style.background, DEFAULT_CUSTOMIZATION.tokens.surface),
@@ -951,7 +1009,7 @@ export function createCustomWidgetFromTemplate(templateId, index = 0, id = `cust
 function normalizeWidgets(value) {
   if (!Array.isArray(value)) return [];
   const usedIds = new Set();
-  return value.slice(0, 24).map((item, index) => {
+  return value.filter(item => item?.id !== 'builtin-dailyNote').slice(0, 24).map((item, index) => {
     const widget = normalizeWidget(item, index);
     if (usedIds.has(widget.id)) widget.id = `custom-widget-${index + 1}`;
     usedIds.add(widget.id);

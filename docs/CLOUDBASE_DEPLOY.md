@@ -6,8 +6,9 @@
 
 1. 复制 `cloudbaserc.example.json` 为 `cloudbaserc.local.json`。
 2. 把 `envId` 改成自己的 CloudBase 环境 ID。
-3. 复制 `.env.example` 为 `.env.production.local`。
-4. 填写本次部署需要内置的网关：
+3. 保留 `hostingPath: "lovephone"`，让 LovePhone 使用独立的静态托管目录，避免覆盖同一环境里的其他网站。
+4. 复制 `.env.example` 为 `.env.production.local`。
+5. 填写本次部署需要内置的网关：
 
 ```env
 LOVEPHONE_AI_GATEWAY_URL=https://your-service.example/api-ai
@@ -24,7 +25,7 @@ LOVEPHONE_MUSIC_GATEWAY_URL=https://your-service.example/music-gateway
 npm run cloudbase:deploy
 ```
 
-脚本会依次执行测试、构建、部署两个云函数和上传静态网站。建议的 HTTP 路由是：
+脚本会依次执行测试、构建、部署两个云函数，并把静态网站上传到 `hostingPath` 指定的目录。默认访问地址为 `https://你的域名/lovephone/`，不会占用或覆盖域名根目录。建议的 HTTP 路由是：
 
 - `/api-ai` -> `ai-gateway`
 - `/music-gateway` -> `wangyiyun66-gateway`

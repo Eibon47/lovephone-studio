@@ -2,7 +2,9 @@ import { activeCharacter } from '../apps/appData.js?v=app-config-40';
 import { primaryAnniversary } from '../services/anniversaryService.js?v=app-config-44';
 import { escapeHtml } from './html.js';
 import { safeUploadedImage } from './icons.js?v=app-config-61';
-import { validateCustomWidgetCode } from '../services/customizationModel.js?v=app-config-100';
+import { validateCustomWidgetCode } from '../services/customizationModel.js?v=app-config-102';
+
+const DESKTOP_PAGE_ROWS = 50;
 
 function dataForSource(source, config, osState, now = new Date()) {
   if (source === 'time') {
@@ -149,6 +151,119 @@ function contentForWidget(widget, data) {
   `;
 }
 
+function compositionBindingValue(element, config, osState, now = new Date()) {
+  const binding = element.binding || {};
+  if (!binding.source || binding.source === 'static') {
+    return binding.field === 'image' ? element.asset || '' : element.content || '';
+  }
+  const data = dataForSource(binding.source, config, osState, now);
+  if (binding.field === 'playing') return Boolean(osState.musicPlayback?.status === 'playing' || osState.musicPlaying);
+  if (binding.field === 'image') return safeUploadedImage(element.asset) || safeUploadedImage(data.image);
+  return data[binding.field] ?? '';
+}
+
+function compositionElementStyle(element) {
+  const frame = element.frame || {};
+  const style = element.style || {};
+  const shadow = Number(style.shadow) || 0;
+  return [
+    `left:${(Number(frame.x) || 0) / 10}%`,
+    `top:${(Number(frame.y) || 0) / 10}%`,
+    `width:${Math.max(2, Number(frame.w) || 20) / 10}%`,
+    `height:${Math.max(2, Number(frame.h) || 20) / 10}%`,
+    `z-index:${Math.max(0, Number(frame.zIndex) || 0)}`,
+    `transform:rotate(${Number(frame.rotation) || 0}deg)`,
+    `opacity:${Math.max(0, Math.min(100, Number(style.opacity) || 0)) / 100}`,
+    `color:${escapeHtml(style.color || '#183629')}`,
+    `background:${escapeHtml(style.background || 'transparent')}`,
+    `border:${Math.max(0, Number(style.borderWidth) || 0)}px solid ${escapeHtml(style.borderColor || '#ffffff')}`,
+    `border-radius:${Math.max(0, Number(style.radius) || 0) / 10}cqw`,
+    `box-shadow:0 ${shadow / 18}cqw ${shadow / 8}cqw rgba(25,42,33,.22)`,
+    `font-size:clamp(8px,${Math.max(8, Number(style.fontSize) || 20) / 10}cqw,80px)`,
+    `font-weight:${Number(style.fontWeight) || 400}`,
+    `line-height:${Number(style.lineHeight) || 1.25}`,
+    `text-align:${escapeHtml(style.textAlign || 'center')}`
+  ].join(';');
+}
+
+function renderCompositionElement(widget, element, config, osState, selectedIds) {
+  if (element.hidden) return '';
+  if (element.type === 'group') return '';
+  const dataAllowed = element.binding?.source === 'static'
+    || (widget.permissions?.data || []).includes(element.binding?.source);
+  const value = dataAllowed ? compositionBindingValue(element, config, osState) : '';
+  const selected = selectedIds.includes(element.id);
+  const className = [
+    'composition-element', `composition-element-${element.type}`,
+    element.type === 'shape' ? `shape-${element.style?.shape || 'rectangle'}` : '',
+    selected ? 'is-selected' : '', element.locked ? 'is-locked' : ''
+  ].filter(Boolean).join(' ');
+  const bindingAttrs = `data-composition-binding="${escapeHtml(element.binding?.source || 'static')}:${escapeHtml(element.binding?.field || 'text')}"`;
+  let content = '';
+  if (element.type === 'image') {
+    const source = safeUploadedImage(value) || safeUploadedImage(element.asset);
+    content = source
+      ? `<img src="${escapeHtml(source)}" alt="" style="object-fit:${escapeHtml(element.style?.objectFit || 'cover')}" />`
+      : '<span class="composition-image-placeholder">＋<small>选择图片</small></span>';
+  } else if (element.type === 'shape') {
+    content = '<span class="composition-shape-fill"></span>';
+  } else if (element.type === 'progress') {
+    const progress = Math.max(0, Math.min(100, Number(value) || 0));
+    content = `<span class="composition-progress-track"><i style="width:${progress}%"></i></span>`;
+  } else if (element.type === 'musicControl') {
+    const playing = osState.musicPlayback?.status === 'playing' || osState.musicPlaying;
+    content = `<span>${element.action?.type === 'musicPlayPause' ? (playing ? 'Ⅱ' : '▶') : escapeHtml(element.content || '▶')}</span>`;
+  } else {
+    content = `<span>${escapeHtml(String(value || element.content || ''))}</span>`;
+  }
+  const requestedAction = element.action?.type || 'none';
+  const action = requestedAction === 'none' || (widget.permissions?.actions || []).includes(requestedAction)
+    ? requestedAction
+    : 'none';
+  const tag = action !== 'none' ? 'button' : 'div';
+  return `
+    <${tag}
+      ${tag === 'button' ? 'type="button"' : ''}
+      class="${className}"
+      style="${compositionElementStyle(element)}"
+      data-composition-element="${escapeHtml(element.id)}"
+      data-composition-widget-element="${escapeHtml(widget.id)}"
+      data-composition-parent="${escapeHtml(element.parentId || '')}"
+      data-frame-x="${Number(element.frame?.x) || 0}"
+      data-frame-y="${Number(element.frame?.y) || 0}"
+      data-frame-w="${Number(element.frame?.w) || 100}"
+      data-frame-h="${Number(element.frame?.h) || 100}"
+      data-frame-rotation="${Number(element.frame?.rotation) || 0}"
+      data-custom-widget-action="${escapeHtml(action)}"
+      data-custom-widget-target="${escapeHtml(element.action?.target || '')}"
+      ${bindingAttrs}
+      ${element.locked ? 'data-composition-locked="true"' : ''}
+      ${osState.widgetEditing ? 'aria-label="编辑组件元素"' : ''}
+    >
+      ${content}
+      ${osState.widgetEditing && selected ? '<i class="composition-resize-handle" data-composition-resize></i><i class="composition-rotate-handle" data-composition-rotate></i>' : ''}
+    </${tag}>`;
+}
+
+function renderCompositionWidget(widget, config, osState) {
+  const selectedIds = osState.widgetEditing && osState.widgetEditorWidgetId === widget.id
+    ? (osState.widgetEditorElementIds || [])
+    : [];
+  const canvas = widget.canvas || {};
+  const canvasStyle = `--composition-bg:${escapeHtml(canvas.background || '#fffdf6')};--composition-radius:${Number(canvas.radius) || 0}px;--composition-opacity:${Math.max(0, Math.min(100, Number(canvas.opacity) || 0)) / 100};--composition-overflow:${canvas.overflow === 'visible' ? 'visible' : 'hidden'}`;
+  return `
+    <article
+      class="desktop-widget composition-widget ${osState.widgetEditing ? 'is-editing' : ''} ${osState.widgetEditorWidgetId === widget.id ? 'is-active' : ''}"
+      data-composition-widget="${escapeHtml(widget.id)}"
+      style="${canvasStyle}"
+    >
+      <div class="composition-canvas">
+        ${(widget.elements || []).map(element => renderCompositionElement(widget, element, config, osState, selectedIds)).join('')}
+      </div>
+      ${osState.widgetEditing ? '<button class="composition-widget-drag-handle" type="button" aria-label="移动整个组件">⋮⋮</button>' : ''}
+    </article>`;
+}
+
 function inlineJson(value) {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
@@ -216,38 +331,58 @@ export function resolveCustomWidgetData(widget, config, osState, now) {
   return dataForSource(widget.dataSource, config, osState, now);
 }
 
-export function renderCustomWidgets(config, osState) {
+export function resolveCompositionBinding(element, config, osState, now) {
+  return compositionBindingValue(element, config, osState, now);
+}
+
+function renderCustomWidgetItem(widget, index, config, osState, layoutOverride) {
+  const layout = layoutOverride || widget.layout || {};
+  const data = widget.kind === 'composition' ? null : resolveCustomWidgetData(widget, config, osState);
+  const style = widget.style || {};
+  const styleText = `--widget-bg:${escapeHtml(style.background)};--widget-text:${escapeHtml(style.text)};--widget-accent:${escapeHtml(style.accent)};--widget-radius:${Number(style.radius) || 0}px`;
+  return `
+    <div
+      class="grid-stack-item ${osState.widgetEditing && osState.widgetEditorWidgetId === widget.id ? 'is-widget-active' : ''}"
+      data-custom-widget-index="${index}"
+      gs-x="${Number(layout.x) || 0}"
+      gs-y="${Number(layout.y) || 0}"
+      gs-w="${Number(layout.w) || 2}"
+      gs-h="${Number(layout.h) || 2}"
+      gs-min-h="2"
+      gs-max-h="${Math.max(2, Math.min(24, DESKTOP_PAGE_ROWS - (Number(layout.y) || 0)))}"
+    >
+      <div class="grid-stack-item-content">
+        ${widget.mode === 'code' ? renderCodeWidget(widget, config, osState, styleText) : widget.kind === 'composition' ? renderCompositionWidget(widget, config, osState) : `<button
+          class="desktop-widget custom-desktop-widget custom-widget-${escapeHtml(widget.type)}"
+          type="button"
+          data-custom-widget-action="${escapeHtml(widget.action)}"
+          data-custom-widget-target="${escapeHtml(widget.actionTarget)}"
+          style="${styleText}"
+        >
+          <span class="custom-widget-label">${escapeHtml(widget.name)}</span>
+          <span class="custom-widget-body">${contentForWidget(widget, data)}</span>
+        </button>`}
+      </div>
+    </div>
+  `;
+}
+
+export function getCustomWidgetEntries(config, osState) {
   const widgets = config.theme?.customization?.widgets || [];
   return widgets
     .map((widget, index) => {
-      if (!widget.enabled) return '';
-      const layout = widget.layout || {};
-      const data = resolveCustomWidgetData(widget, config, osState);
-      const style = widget.style || {};
-      const styleText = `--widget-bg:${escapeHtml(style.background)};--widget-text:${escapeHtml(style.text)};--widget-accent:${escapeHtml(style.accent)};--widget-radius:${Number(style.radius) || 0}px`;
-      return `
-        <div
-          class="grid-stack-item"
-          data-custom-widget-index="${index}"
-          gs-x="${Number(layout.x) || 0}"
-          gs-y="${Number(layout.y) || 0}"
-          gs-w="${Number(layout.w) || 2}"
-          gs-h="${Number(layout.h) || 2}"
-        >
-          <div class="grid-stack-item-content">
-            ${widget.mode === 'code' ? renderCodeWidget(widget, config, osState, styleText) : `<button
-              class="desktop-widget custom-desktop-widget custom-widget-${escapeHtml(widget.type)}"
-              type="button"
-              data-custom-widget-action="${escapeHtml(widget.action)}"
-              data-custom-widget-target="${escapeHtml(widget.actionTarget)}"
-              style="${styleText}"
-            >
-              <span class="custom-widget-label">${escapeHtml(widget.name)}</span>
-              <span class="custom-widget-body">${contentForWidget(widget, data)}</span>
-            </button>`}
-          </div>
-        </div>
-      `;
+      if (!widget.enabled || widget.id === 'builtin-dailyNote') return null;
+      return {
+        id: widget.id,
+        layout: widget.layout || {},
+        render: layout => renderCustomWidgetItem(widget, index, config, osState, layout)
+      };
     })
+    .filter(Boolean);
+}
+
+export function renderCustomWidgets(config, osState) {
+  return getCustomWidgetEntries(config, osState)
+    .map(entry => entry.render(entry.layout))
     .join('');
 }

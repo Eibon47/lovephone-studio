@@ -15,6 +15,12 @@ import {
   validateCustomWidgetCode
 } from '../services/customizationModel.js?v=app-config-83';
 import { readOptimizedImage, readSquareImage } from '../services/imageUploadService.js?v=app-config-60';
+import {
+  COMPOSITION_ACTIONS,
+  COMPOSITION_DATA_FIELDS,
+  COMPOSITION_ELEMENT_TYPES,
+  COMPOSITION_WIDGET_TEMPLATES
+} from '../services/compositionWidgetModel.js?v=app-config-104';
 
 const TITLES = {
   basic: ['基础样式', '调整字体大小、圆角、边框、阴影和整体透明度。'],
@@ -28,6 +34,7 @@ const TITLES = {
 };
 
 const SOURCE_LABELS = {
+  static: '静态内容',
   time: '当前时间',
   date: '当前日期',
   weather: '天气',
@@ -66,6 +73,15 @@ function field(label, path, value, type = 'number', options = {}) {
       />
     </label>
   `;
+}
+
+function compositionField(label, path, value, type = 'number', options = {}, elementId = '') {
+  const min = options.min ?? '';
+  const max = options.max ?? '';
+  const step = options.step ?? 1;
+  const scope = elementId ? 'element' : 'canvas';
+  const attribute = `data-composition-${scope}-${type === 'color' ? 'color' : type === 'text' ? 'value' : 'number'}="${path}"`;
+  return `<label class="custom-field"><span>${label}${options.unit ? `<small>${options.unit}</small>` : ''}</span><input type="${type}" value="${escapeHtml(value)}" ${type === 'number' || type === 'range' ? `min="${min}" max="${max}" step="${step}"` : ''} ${attribute} ${elementId ? `data-composition-element-id="${escapeHtml(elementId)}"` : ''}></label>`;
 }
 
 function renderBasic(customization) {
@@ -188,15 +204,17 @@ function selectedWidget(customization, ui) {
   return { widget: widgets[index], index };
 }
 
-function renderWidgetTabs(ui, hasWidget) {
-  const active = ['templates', 'style', 'code'].includes(ui.customWidgetTab)
+function renderWidgetTabs(ui, hasWidget, showCode) {
+  const active = ['templates', 'layers', 'style', 'data', 'code'].includes(ui.customWidgetTab)
     ? ui.customWidgetTab
     : 'templates';
   return `
     <nav class="custom-widget-tabs" aria-label="小组件编辑步骤">
-      <button class="${active === 'templates' ? 'active' : ''}" type="button" data-custom-widget-tab="templates">模板</button>
-      <button class="${active === 'style' ? 'active' : ''}" type="button" data-custom-widget-tab="style" ${hasWidget ? '' : 'disabled'}>样式</button>
-      <button class="${active === 'code' ? 'active' : ''}" type="button" data-custom-widget-tab="code" ${hasWidget ? '' : 'disabled'}>代码</button>
+      <button class="${active === 'templates' ? 'active' : ''}" type="button" data-custom-widget-tab="templates">模板库</button>
+      <button class="${active === 'layers' ? 'active' : ''}" type="button" data-custom-widget-tab="layers" ${hasWidget ? '' : 'disabled'}>图层</button>
+      <button class="${active === 'style' ? 'active' : ''}" type="button" data-custom-widget-tab="style" ${hasWidget ? '' : 'disabled'}>属性</button>
+      <button class="${active === 'data' ? 'active' : ''}" type="button" data-custom-widget-tab="data" ${hasWidget ? '' : 'disabled'}>数据与动作</button>
+      ${showCode ? `<button class="${active === 'code' ? 'active' : ''}" type="button" data-custom-widget-tab="code" ${hasWidget ? '' : 'disabled'}>代码</button>` : ''}
     </nav>
   `;
 }
@@ -206,8 +224,8 @@ function renderWidgetInstanceList(customization, selectedIndex) {
   return `
     <div class="custom-widget-instance-list">
       ${customization.widgets.map((widget, index) => `
-        <button class="${selectedIndex === index ? 'active' : ''}" type="button" data-custom-widget-select="${index}">
-          <span>${escapeHtml(widget.name)}</span><small>${widget.mode === 'code' ? '代码' : '可视化'}</small>
+        <button class="${selectedIndex === index ? 'active' : ''}" type="button" data-custom-widget-select="${index}" data-widget-id="${escapeHtml(widget.id)}">
+            <span>${escapeHtml(widget.name)}</span><small>${widget.mode === 'code' ? '代码' : '自由画布'}</small>
         </button>
       `).join('')}
     </div>
@@ -217,11 +235,11 @@ function renderWidgetInstanceList(customization, selectedIndex) {
 function renderWidgetTemplates(customization) {
   return `
     <div class="custom-widget-template-grid">
-      ${CUSTOM_WIDGET_TEMPLATES.map(template => `
+      ${COMPOSITION_WIDGET_TEMPLATES.map(template => `
         <button class="custom-widget-template-card template-${template.id}" type="button" data-custom-widget-template="${template.id}">
-          <span class="custom-widget-template-demo"><i></i><b>${template.id === 'music' ? '♪' : template.id === 'weather' ? '24°' : template.id === 'clock' ? '09:41' : template.id === 'calendar' ? '04' : '✦'}</b></span>
+          <span class="custom-widget-template-demo"><i></i><b>${template.id.startsWith('music') ? '♪' : template.id === 'weather' ? '24°' : template.id === 'clock' ? '09:41' : template.id.startsWith('photo') ? '▧' : '✦'}</b></span>
           <strong>${template.name}</strong>
-          <small>${template.description} · ${template.size[0]}×${template.size[1]}</small>
+          <small>${template.elements.length} 个图层 · ${template.size[0]}×${template.size[1]}</small>
         </button>
       `).join('')}
     </div>
@@ -229,36 +247,132 @@ function renderWidgetTemplates(customization) {
   `;
 }
 
+function selectedCompositionElement(widget, ui) {
+  if (widget?.kind !== 'composition') return null;
+  const ids = ui.widgetEditorElementIds || [];
+  return widget.elements.find(element => ids.includes(element.id)) || null;
+}
+
+function renderWidgetLayers(customization, ui) {
+  const { widget } = selectedWidget(customization, ui);
+  if (!widget) return '<p class="custom-empty">请先从模板库创建一个组件。</p>';
+  if (widget.kind !== 'composition') return '<p class="custom-empty">代码组件只能编辑外框；打开开发者模式可查看代码。</p>';
+  const selectedIds = ui.widgetEditorElementIds || [];
+  const typeLabels = { text: '文字', image: '图片', shape: '形状', button: '按钮', progress: '进度条', musicControl: '音乐控件' };
+  return `
+    <div class="composition-history-bar">
+      <button type="button" data-composition-undo title="撤销">↶</button>
+      <button type="button" data-composition-redo title="重做">↷</button>
+      <span>右侧直接拖动、拉伸或旋转</span>
+    </div>
+    <div class="composition-add-bar">
+      ${COMPOSITION_ELEMENT_TYPES.filter(type => type !== 'group').map(type => `<button type="button" data-composition-add="${type}">${typeLabels[type] || type}</button>`).join('')}
+    </div>
+    <div class="composition-layer-actions">
+      <button type="button" data-composition-duplicate ${selectedIds.length ? '' : 'disabled'}>复制</button>
+      <button type="button" data-composition-group ${selectedIds.length > 1 ? '' : 'disabled'}>分组</button>
+      <button type="button" data-composition-ungroup ${selectedIds.length ? '' : 'disabled'}>取消分组</button>
+      <button type="button" data-composition-remove ${selectedIds.length ? '' : 'disabled'}>删除</button>
+    </div>
+    <div class="composition-align-bar">
+      ${[['left','左对齐'],['center','水平居中'],['right','右对齐'],['top','顶对齐'],['middle','垂直居中'],['bottom','底对齐'],['distributeX','横向均分'],['distributeY','纵向均分'],['front','置顶'],['back','置底']].map(([id,label]) => `<button type="button" data-composition-arrange="${id}" ${selectedIds.length ? '' : 'disabled'}>${label}</button>`).join('')}
+    </div>
+    <div class="composition-layer-list">
+      ${[...widget.elements].sort((a, b) => b.frame.zIndex - a.frame.zIndex).map(element => `
+        <button type="button" class="${selectedIds.includes(element.id) ? 'active' : ''}" data-composition-layer="${element.id}">
+          <span>${element.hidden ? '◌' : element.locked ? '◇' : '◆'}</span>
+          <strong>${escapeHtml(element.name)}</strong>
+          <small>${typeLabels[element.type] || '分组'}</small>
+        </button>`).join('') || '<p class="custom-empty">这是空白画布，请添加第一个图层。</p>'}
+    </div>`;
+}
+
 function renderWidgetStyle(customization, ui) {
   const { widget, index } = selectedWidget(customization, ui);
   if (!widget) return '<p class="custom-empty">请先从模板库创建一个组件。</p>';
+  if (widget.kind !== 'composition') return renderWidgetCode(customization, ui);
+  const element = selectedCompositionElement(widget, ui);
+  if (!element) {
+    return `
+      <div class="custom-widget-editor-toolbar">
+        <span><small>组件画布</small><strong>${escapeHtml(widget.name)}</strong></span>
+        <button type="button" data-custom-widget-remove="${index}">删除组件</button>
+      </div>
+      ${field('组件名称', `widgets.${index}.name`, widget.name, 'text')}
+      <div class="custom-field-grid">
+        ${compositionField('桌面宽度', 'layout.w', widget.layout.w, 'range', { min: 2, max: 12, unit: '格' })}
+        ${compositionField('桌面高度', 'layout.h', widget.layout.h, 'range', { min: 2, max: Math.min(24, 96 - widget.layout.y), unit: '格' })}
+        ${compositionField('背景色', 'canvas.background', widget.canvas.background, 'color')}
+        ${compositionField('圆角', 'canvas.radius', widget.canvas.radius, 'range', { min: 0, max: 160 })}
+        ${compositionField('透明度', 'canvas.opacity', widget.canvas.opacity, 'range', { min: 0, max: 100, unit: '%' })}
+        ${widgetSelect('边界处理', 'data-composition-canvas-value="canvas.overflow"', ['hidden', 'visible'], widget.canvas.overflow, { hidden: '裁切', visible: '允许溢出' })}
+      </div>
+      <p class="custom-empty">点击右侧组件中的文字、图片或按钮，可编辑该图层的详细属性。</p>`;
+  }
   return `
     <div class="custom-widget-editor-toolbar">
-      <span><small>正在编辑</small><strong>${escapeHtml(widget.name)}</strong></span>
-      <button type="button" data-custom-widget-remove="${index}">删除</button>
+      <span><small>正在编辑图层</small><strong>${escapeHtml(element.name)}</strong></span>
+      <button type="button" data-composition-remove>删除</button>
     </div>
-    ${field('名称', `widgets.${index}.name`, widget.name, 'text')}
+    <label class="custom-field"><span>图层名称</span><input type="text" value="${escapeHtml(element.name)}" data-composition-element-value="name" data-composition-element-id="${element.id}" /></label>
+    ${['text', 'button', 'musicControl'].includes(element.type) ? `<label class="custom-field"><span>显示文字</span><textarea rows="3" data-composition-element-value="content" data-composition-element-id="${element.id}">${escapeHtml(element.content)}</textarea></label>` : ''}
     <div class="custom-field-grid">
-      ${widgetSelect('显示形式', `data-custom-widget-value="widgets.${index}.type"`, CUSTOM_WIDGET_TYPES, widget.type)}
-      ${widgetSelect('数据来源', `data-custom-widget-value="widgets.${index}.dataSource"`, CUSTOM_WIDGET_SOURCES, widget.dataSource, SOURCE_LABELS)}
-      ${widgetSelect('点击动作', `data-custom-widget-value="widgets.${index}.action"`, CUSTOM_WIDGET_ACTIONS, widget.action, ACTION_LABELS)}
-      ${field('动作目标 App / 角色', `widgets.${index}.actionTarget`, widget.actionTarget, 'text')}
-      ${field('前缀', `widgets.${index}.prefix`, widget.prefix, 'text')}
-      ${field('后缀', `widgets.${index}.suffix`, widget.suffix, 'text')}
-      ${field('宽度', `widgets.${index}.layout.w`, widget.layout.w, 'range', { min: 1, max: 6 })}
-      ${field('高度', `widgets.${index}.layout.h`, widget.layout.h, 'range', { min: 1, max: 6 })}
-      ${field('背景色', `widgets.${index}.style.background`, widget.style.background, 'color')}
-      ${field('文字色', `widgets.${index}.style.text`, widget.style.text, 'color')}
-      ${field('强调色', `widgets.${index}.style.accent`, widget.style.accent, 'color')}
-      ${field('圆角', `widgets.${index}.style.radius`, widget.style.radius, 'range', { min: 0, max: 32, unit: 'px' })}
+      ${compositionField('X', 'frame.x', element.frame.x, 'number', { min: -1000, max: 2000 }, element.id)}
+      ${compositionField('Y', 'frame.y', element.frame.y, 'number', { min: -1000, max: 2000 }, element.id)}
+      ${compositionField('宽度', 'frame.w', element.frame.w, 'number', { min: 20, max: 2000 }, element.id)}
+      ${compositionField('高度', 'frame.h', element.frame.h, 'number', { min: 20, max: 2000 }, element.id)}
+      ${compositionField('旋转', 'frame.rotation', element.frame.rotation, 'range', { min: -180, max: 180, unit: '°' }, element.id)}
+      ${compositionField('圆角', 'style.radius', element.style.radius, 'range', { min: 0, max: 500 }, element.id)}
+      ${compositionField('透明度', 'style.opacity', element.style.opacity, 'range', { min: 0, max: 100, unit: '%' }, element.id)}
+      ${compositionField('阴影', 'style.shadow', element.style.shadow, 'range', { min: 0, max: 80 }, element.id)}
+      ${compositionField('文字颜色', 'style.color', element.style.color, 'color', {}, element.id)}
+      ${compositionField('背景色', 'style.background', element.style.background === 'transparent' ? '#ffffff' : element.style.background, 'color', {}, element.id)}
+      ${compositionField('边框颜色', 'style.borderColor', element.style.borderColor, 'color', {}, element.id)}
+      ${compositionField('边框宽度', 'style.borderWidth', element.style.borderWidth, 'range', { min: 0, max: 20 }, element.id)}
+      ${['text', 'button', 'musicControl'].includes(element.type) ? compositionField('字号', 'style.fontSize', element.style.fontSize, 'range', { min: 8, max: 220 }, element.id) : ''}
+      ${['text', 'button', 'musicControl'].includes(element.type) ? compositionField('字重', 'style.fontWeight', element.style.fontWeight, 'range', { min: 100, max: 900, step: 100 }, element.id) : ''}
+      ${['text', 'button'].includes(element.type) ? compositionField('行高', 'style.lineHeight', element.style.lineHeight, 'number', { min: 0.8, max: 3, step: 0.05 }, element.id) : ''}
+      ${['text', 'button'].includes(element.type) ? widgetSelect('文字对齐', `data-composition-element-select="style.textAlign" data-composition-element-id="${element.id}"`, ['left', 'center', 'right'], element.style.textAlign, { left: '左对齐', center: '居中', right: '右对齐' }) : ''}
+      ${element.type === 'image' ? widgetSelect('图片裁切', `data-composition-element-select="style.objectFit" data-composition-element-id="${element.id}"`, ['cover', 'contain', 'fill'], element.style.objectFit, { cover: '铺满裁切', contain: '完整显示', fill: '拉伸填满' }) : ''}
+      ${element.type === 'shape' ? widgetSelect('形状', `data-composition-element-select="style.shape" data-composition-element-id="${element.id}"`, ['rectangle', 'circle', 'line'], element.style.shape, { rectangle: '矩形', circle: '圆形', line: '分割线' }) : ''}
     </div>
-    <label class="custom-widget-image-upload">
-      <span>${widget.image ? `<img src="${escapeHtml(widget.image)}" alt="" />` : '<i>＋</i>'}</span>
-      <strong>${widget.image ? '替换组件图片' : '上传组件图片'}</strong>
+    <label class="custom-check-row"><span><strong>透明背景</strong><small>只显示文字、图片或边框</small></span><input type="checkbox" data-composition-background-transparent="${element.id}" ${element.style.background === 'transparent' ? 'checked' : ''}></label>
+    <label class="custom-check-row"><span><strong>锁定图层</strong><small>锁定后不能在右侧拖动</small></span><input type="checkbox" data-composition-element-check="locked" data-composition-element-id="${element.id}" ${element.locked ? 'checked' : ''}></label>
+    <label class="custom-check-row"><span><strong>隐藏图层</strong><small>保留图层但不在成品显示</small></span><input type="checkbox" data-composition-element-check="hidden" data-composition-element-id="${element.id}" ${element.hidden ? 'checked' : ''}></label>
+    ${element.type === 'image' ? `<label class="custom-widget-image-upload">
+      <span>${element.asset ? `<img src="${escapeHtml(element.asset)}" alt="" />` : '<i>＋</i>'}</span>
+      <strong>${element.asset ? '替换图层图片' : '上传图层图片'}</strong>
       <small>仅保存在本地，自动压缩。</small>
-      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-custom-widget-image="${index}" />
-    </label>
+      <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-composition-element-image="${element.id}" />
+    </label>` : ''}
   `;
+}
+
+function renderWidgetData(customization, ui) {
+  const { widget } = selectedWidget(customization, ui);
+  const element = selectedCompositionElement(widget, ui);
+  if (!widget || widget.kind !== 'composition') return '<p class="custom-empty">请选择一个自由画布组件。</p>';
+  if (!element) return '<p class="custom-empty">先在“图层”或右侧手机中选择一个元素，再连接数据与动作。</p>';
+  const source = element.binding.source;
+  const fields = COMPOSITION_DATA_FIELDS[source] || COMPOSITION_DATA_FIELDS.static;
+  return `
+    <section class="composition-binding-panel">
+      <header><strong>${escapeHtml(element.name)}</strong><small>每个图层可以单独读取数据和执行动作。</small></header>
+      ${widgetSelect('数据来源', `data-composition-element-select="binding.source" data-composition-element-id="${element.id}"`, Object.keys(COMPOSITION_DATA_FIELDS), source, SOURCE_LABELS)}
+      ${widgetSelect('显示字段', `data-composition-element-select="binding.field" data-composition-element-id="${element.id}"`, fields, element.binding.field, { primary: '主要文字', secondary: '辅助文字', image: '图片', progress: '进度', playing: '播放状态', text: '静态文字', value: '静态数值' })}
+      ${widgetSelect('点击动作', `data-composition-element-select="action.type" data-composition-element-id="${element.id}"`, COMPOSITION_ACTIONS, element.action.type, ACTION_LABELS)}
+      <label class="custom-field"><span>动作目标 App / 角色 ID</span><input type="text" value="${escapeHtml(element.action.target)}" data-composition-element-value="action.target" data-composition-element-id="${element.id}"></label>
+      ${source === 'weather' ? `
+        <section class="composition-data-settings">
+          <strong>天气位置</strong>
+          <label class="custom-field"><span>城市</span><input type="text" value="${escapeHtml(customization.__weather?.city || '')}" data-composition-system-value="theme.widgets.weather.city"></label>
+          <div class="custom-field-grid">
+            <label class="custom-field"><span>纬度</span><input type="number" step="0.0001" value="${Number(customization.__weather?.latitude || 0)}" data-composition-system-number="theme.widgets.weather.latitude"></label>
+            <label class="custom-field"><span>经度</span><input type="number" step="0.0001" value="${Number(customization.__weather?.longitude || 0)}" data-composition-system-number="theme.widgets.weather.longitude"></label>
+          </div>
+        </section>` : ''}
+      <p class="custom-empty">当前组件需要的数据权限和动作权限会根据图层绑定自动计算，撤销绑定后立即停止访问。</p>
+    </section>`;
 }
 
 function permissionChecks(values, selected, category) {
@@ -301,16 +415,16 @@ function renderWidgetCode(customization, ui) {
 }
 
 function renderWidgets(customization, ui) {
-  const { index } = selectedWidget(customization, ui);
-  const active = ['templates', 'style', 'code'].includes(ui.customWidgetTab)
+  const { widget, index } = selectedWidget(customization, ui);
+  const active = ['templates', 'layers', 'style', 'data', 'code'].includes(ui.customWidgetTab)
     ? ui.customWidgetTab
     : 'templates';
   return `
     <div class="custom-widget-list">
-      ${renderWidgetTabs(ui, customization.widgets.length > 0)}
+      ${renderWidgetTabs(ui, customization.widgets.length > 0, customization.developerMode && widget?.mode === 'code')}
       ${renderWidgetInstanceList(customization, index)}
       <div class="custom-widget-tab-panel">
-        ${active === 'templates' ? renderWidgetTemplates(customization) : active === 'code' ? renderWidgetCode(customization, ui) : renderWidgetStyle(customization, ui)}
+        ${active === 'templates' ? renderWidgetTemplates(customization) : active === 'layers' ? renderWidgetLayers(customization, ui) : active === 'data' ? renderWidgetData(customization, ui) : active === 'code' ? renderWidgetCode(customization, ui) : renderWidgetStyle(customization, ui)}
       </div>
     </div>
   `;
@@ -964,7 +1078,10 @@ function renderBody(config, ui, apps) {
   if (kind === 'palette') return renderPalette(customization);
   if (kind === 'iconPack') return renderIconPack(customization, apps);
   if (kind === 'desktop') return renderDesktop(customization);
-  if (kind === 'widgets') return renderWidgets(customization, ui);
+  if (kind === 'widgets') return renderWidgets({
+    ...customization,
+    __weather: config.theme.widgets?.weather || {}
+  }, ui);
   if (kind === 'app') return renderApp(customization, ui.customEditor.appId, apps, ui);
   if (kind === 'packages') return renderPackages(ui);
   return '';
@@ -1119,6 +1236,70 @@ export function bindCustomizationDrawer(root, handlers) {
   });
   root.querySelectorAll('[data-custom-widget-tab]').forEach(button => {
     button.addEventListener('click', () => handlers.setCustomWidgetTab?.(button.dataset.customWidgetTab));
+  });
+  root.querySelectorAll('[data-composition-layer]').forEach(button => {
+    button.addEventListener('click', event => {
+      const active = [...root.querySelectorAll('[data-composition-layer].active')].map(item => item.dataset.compositionLayer);
+      const id = button.dataset.compositionLayer;
+      const ids = event.shiftKey
+        ? active.includes(id) ? active.filter(item => item !== id) : [...active, id]
+        : [id];
+      handlers.selectCompositionElements?.(
+        root.querySelector('[data-custom-widget-select].active')?.dataset.widgetId || '',
+        ids
+      );
+    });
+  });
+  root.querySelectorAll('[data-composition-add]').forEach(button => {
+    button.addEventListener('click', () => handlers.addCompositionElement?.(button.dataset.compositionAdd));
+  });
+  root.querySelector('[data-composition-remove]')?.addEventListener('click', () => handlers.removeCompositionElements?.());
+  root.querySelector('[data-composition-duplicate]')?.addEventListener('click', () => handlers.duplicateCompositionElements?.());
+  root.querySelector('[data-composition-group]')?.addEventListener('click', () => handlers.groupCompositionElements?.(true));
+  root.querySelector('[data-composition-ungroup]')?.addEventListener('click', () => handlers.groupCompositionElements?.(false));
+  root.querySelectorAll('[data-composition-arrange]').forEach(button => {
+    button.addEventListener('click', () => handlers.arrangeCompositionElements?.(button.dataset.compositionArrange));
+  });
+  root.querySelector('[data-composition-undo]')?.addEventListener('click', () => handlers.undoCustomWidget?.());
+  root.querySelector('[data-composition-redo]')?.addEventListener('click', () => handlers.redoCustomWidget?.());
+  root.querySelectorAll('[data-composition-canvas-number], [data-composition-canvas-color], [data-composition-canvas-value]').forEach(input => {
+    input.addEventListener('change', () => {
+      const path = input.dataset.compositionCanvasNumber || input.dataset.compositionCanvasColor || input.dataset.compositionCanvasValue;
+      handlers.updateCompositionCanvas?.(path, input.type === 'range' || input.type === 'number' ? Number(input.value) : input.value);
+    });
+  });
+  root.querySelectorAll('[data-composition-element-number], [data-composition-element-color], [data-composition-element-value], [data-composition-element-select], [data-composition-element-check]').forEach(input => {
+    input.addEventListener('change', () => {
+      const path = input.dataset.compositionElementNumber || input.dataset.compositionElementColor || input.dataset.compositionElementValue || input.dataset.compositionElementSelect || input.dataset.compositionElementCheck;
+      const value = input.dataset.compositionElementCheck
+        ? input.checked
+        : input.type === 'range' || input.type === 'number' ? Number(input.value) : input.value;
+      handlers.updateCompositionElement?.(input.dataset.compositionElementId, path, value);
+    });
+  });
+  root.querySelectorAll('[data-composition-element-image]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        handlers.updateCompositionElement?.(input.dataset.compositionElementImage, 'asset', await readOptimizedImage(file, 1200));
+      } catch (error) {
+        handlers.setCustomizationStatus?.(error.message || '组件图片处理失败。');
+      }
+    });
+  });
+  root.querySelectorAll('[data-composition-background-transparent]').forEach(input => {
+    input.addEventListener('change', () => handlers.updateCompositionElement?.(
+      input.dataset.compositionBackgroundTransparent,
+      'style.background',
+      input.checked ? 'transparent' : '#ffffff'
+    ));
+  });
+  root.querySelectorAll('[data-composition-system-value], [data-composition-system-number]').forEach(input => {
+    input.addEventListener('change', () => handlers.updatePath?.(
+      input.dataset.compositionSystemValue || input.dataset.compositionSystemNumber,
+      input.dataset.compositionSystemNumber ? Number(input.value) : input.value
+    ));
   });
   root.querySelectorAll('[data-chat-appearance-tab]').forEach(button => {
     button.addEventListener('click', () => handlers.setChatAppearanceTab?.(button.dataset.chatAppearanceTab));

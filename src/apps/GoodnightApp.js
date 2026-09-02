@@ -175,6 +175,14 @@ export const GoodnightApp = {
         note: form.elements.note.value.trim(),
         message: nightlyLine(character, mood)
       };
+      handlers.emitCompanionEvent?.({
+        type: 'goodnight.checkin.saved',
+        characterId: character.id,
+        sourceApp: 'goodnight',
+        sourceId: entry.id,
+        dedupeKey: `goodnight:${character.id}:${entry.date}`,
+        payload: { mood: entry.mood, note: entry.note, routineCount: entry.routine.length }
+      });
       handlers.updatePath?.(
         'apps.goodnight.entries',
         [

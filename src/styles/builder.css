@@ -1699,7 +1699,7 @@
 
 .custom-widget-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
   gap: 4px;
   margin-bottom: 12px;
   padding: 3px;
@@ -1724,6 +1724,74 @@
 .custom-widget-tabs button:disabled {
   opacity: 0.42;
 }
+
+.composition-history-bar,
+.composition-add-bar,
+.composition-layer-actions,
+.composition-align-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.composition-history-bar span {
+  margin-left: auto;
+  color: #6f8076;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.composition-history-bar button {
+  width: 34px;
+  min-width: 34px;
+  padding: 6px;
+  font-size: 19px;
+}
+
+.composition-add-bar button,
+.composition-layer-actions button,
+.composition-align-bar button {
+  min-width: max-content;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.composition-layer-list {
+  overflow: hidden;
+  border: 1px solid #dbe3da;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.composition-layer-list button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #edf0ec;
+  border-radius: 0;
+  text-align: left;
+  background: transparent;
+}
+
+.composition-layer-list button:last-child { border-bottom: 0; }
+.composition-layer-list button.active { color: #245c41; background: #e9f4ed; }
+.composition-layer-list button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composition-layer-list button small { color: #8b968f; }
+
+.composition-binding-panel > header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 14px;
+}
+
+.composition-binding-panel > header small { color: #758079; }
 
 .custom-widget-instance-list {
   display: flex;

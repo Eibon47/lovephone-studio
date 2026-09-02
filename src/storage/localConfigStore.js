@@ -1,5 +1,6 @@
-import { defaultConfig } from '../config/defaultConfig.js?v=app-config-95';
-import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-95';
+import { defaultConfig } from '../config/defaultConfig.js?v=app-config-96';
+import { normalizeConfig, parseConfigJson } from '../config/schema.js?v=app-config-98';
+import { findDuplicateCharacterIds } from '../services/characterIdentityService.js';
 
 const exportedPhoneId = String(globalThis.__LOVE_PHONE_EXPORT__?.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 const DB_NAME = exportedPhoneId ? `lovePhoneStudio-${exportedPhoneId}` : 'lovePhoneStudio';
@@ -214,7 +215,12 @@ export async function loadConfig(options = {}) {
     const database = await openDatabase();
     const stored = await readCurrentRecord(database);
     const legacy = stored || options.isolated ? null : readLegacyConfig();
-    const normalized = normalizeConfig(stored?.config || legacy || options.seedConfig || defaultConfig);
+    const rawConfig = stored?.config || legacy || options.seedConfig || defaultConfig;
+    const duplicateCharacterIds = findDuplicateCharacterIds(rawConfig);
+    if (duplicateCharacterIds.length) {
+      await insertBackup(database, rawConfig, 'before-character-id-repair');
+    }
+    const normalized = normalizeConfig(rawConfig);
     const backups = await readBackups(database);
     lastBackupAt = backups.length ? Date.parse(backups[0].createdAt) : 0;
     await writeCurrent(database, normalized, {
@@ -226,6 +232,8 @@ export async function loadConfig(options = {}) {
     await refreshStorageStatus(normalized, {
       message: legacy
         ? '旧版数据已安全迁移到本地数据库。'
+        : duplicateCharacterIds.length
+          ? `已先备份数据，并修复 ${duplicateCharacterIds.length} 组重复角色编号。`
         : '已从本地数据库加载。'
     });
     return normalized;

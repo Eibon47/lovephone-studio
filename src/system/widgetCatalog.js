@@ -51,13 +51,6 @@ export const WIDGET_CATALOG = [
     tone: 'lavender'
   },
   {
-    id: 'dailyNote',
-    name: '今日陪伴语',
-    desc: '把角色的一句话留在桌面。',
-    size: '横向',
-    tone: 'cream'
-  },
-  {
     id: 'mood',
     name: '心情记录',
     desc: '一周心情趋势与今日状态。',

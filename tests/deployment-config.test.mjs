@@ -26,3 +26,11 @@ test('tracked application and documentation contain no maintainer deployment add
     for (const pattern of privateAddressPatterns) assert.equal(pattern.test(source), false, `${file} contains a private deployment address`);
   }
 });
+
+test('CloudBase deployment uses an isolated hosting directory', async () => {
+  const example = JSON.parse(await readFile(new URL('../cloudbaserc.example.json', import.meta.url), 'utf8'));
+  const deployScript = await readFile(new URL('../server/deploy-cloudbase.mjs', import.meta.url), 'utf8');
+  assert.equal(example.hostingPath, 'lovephone');
+  assert.match(deployScript, /hostingPath/);
+  assert.match(deployScript, /'hosting', 'deploy', 'dist', hostingPath/);
+});

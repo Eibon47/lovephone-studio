@@ -25,6 +25,10 @@ import {
   validateCustomCss,
   validateCustomWidgetCode
 } from '../src/services/customizationModel.js';
+import {
+  COMPOSITION_WIDGET_TEMPLATES,
+  createCompositionWidget
+} from '../src/services/compositionWidgetModel.js';
 
 test('normalization supplies a complete customization model', () => {
   const result = normalizeCustomization();
@@ -83,11 +87,12 @@ test('widgets only keep whitelisted sources and actions', () => {
       type: 'progress'
     }]
   });
-  assert.equal(result.widgets[0].dataSource, 'time');
-  assert.equal(result.widgets[0].action, 'none');
-  assert.equal(result.widgets[0].type, 'text');
-  assert.equal(CUSTOM_WIDGET_SOURCES.includes(result.widgets[1].dataSource), true);
-  assert.equal(CUSTOM_WIDGET_ACTIONS.includes(result.widgets[1].action), true);
+  assert.equal(result.widgets[0].kind, 'composition');
+  assert.equal(result.widgets[0].elements[0].binding.source, 'static');
+  assert.equal(result.widgets[0].elements[0].action.type, 'none');
+  assert.equal(result.widgets[0].elements[0].type, 'text');
+  assert.equal(CUSTOM_WIDGET_SOURCES.includes(result.widgets[1].elements[0].binding.source), true);
+  assert.equal(CUSTOM_WIDGET_ACTIONS.includes(result.widgets[1].elements[0].action.type), true);
 });
 
 test('invalid app CSS is dropped while safe variables remain', () => {
@@ -337,16 +342,17 @@ test('every App theme keeps an independent media collection', () => {
   assert.equal(result.appThemes.diary.media.primaryButtonImage, image);
 });
 
-test('the widget studio exposes ten editable templates with stable defaults', () => {
-  assert.equal(CUSTOM_WIDGET_TEMPLATES.length, 10);
-  const ids = new Set(CUSTOM_WIDGET_TEMPLATES.map(template => template.id));
-  assert.equal(ids.size, 10);
-  for (const [index, template] of CUSTOM_WIDGET_TEMPLATES.entries()) {
-    const widget = createCustomWidgetFromTemplate(template.id, index, `template-${index}`);
+test('the widget studio exposes free-canvas templates with stable defaults', () => {
+  assert.equal(COMPOSITION_WIDGET_TEMPLATES.length >= 12, true);
+  const ids = new Set(COMPOSITION_WIDGET_TEMPLATES.map(template => template.id));
+  assert.equal(ids.size, COMPOSITION_WIDGET_TEMPLATES.length);
+  for (const [index, template] of COMPOSITION_WIDGET_TEMPLATES.entries()) {
+    const widget = createCompositionWidget(template.id, index, `template-${index}`);
     assert.equal(widget.templateId, template.id);
     assert.equal(widget.layout.w, template.size[0]);
     assert.equal(widget.layout.h, template.size[1]);
-    assert.equal(widget.code.dataPermissions.includes('activeCharacter'), true);
+    assert.equal(widget.kind, 'composition');
+    assert.equal(widget.gridVersion, 12);
   }
 });
 

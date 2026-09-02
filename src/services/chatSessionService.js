@@ -13,7 +13,8 @@ function defaultSession(characterId, createdAt) {
     characterId,
     title: '默认会话',
     createdAt,
-    updatedAt: createdAt
+    updatedAt: createdAt,
+    lastReadAt: createdAt
   };
 }
 
@@ -33,7 +34,8 @@ export function normalizeChatSessionData(chat = {}, characterIds = [], fallbackD
       characterId,
       title: String(source.title || '未命名会话').trim().slice(0, 30) || '未命名会话',
       createdAt: source.createdAt || now,
-      updatedAt: source.updatedAt || source.createdAt || now
+      updatedAt: source.updatedAt || source.createdAt || now,
+      lastReadAt: source.lastReadAt || ''
     });
   }
 
@@ -65,7 +67,31 @@ export function normalizeChatSessionData(chat = {}, characterIds = [], fallbackD
     ))
       ? requestedSessionId
       : activeSessionIds[characterId];
-    return { ...message, characterId, sessionId };
+    const requestStatus = ['pending', 'sent', 'failed', 'stopped'].includes(message?.requestStatus)
+      ? message.requestStatus
+      : 'sent';
+    const replyTo = message?.replyTo && typeof message.replyTo === 'object' ? {
+      messageId: String(message.replyTo.messageId || '').slice(0, 120),
+      from: message.replyTo.from === 'character' ? 'character' : 'user',
+      sender: String(message.replyTo.sender || '').slice(0, 60),
+      summary: String(message.replyTo.summary || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+    } : null;
+    return {
+      ...message,
+      characterId,
+      sessionId,
+      requestStatus,
+      replyTo,
+      errorCode: String(message?.errorCode || '').slice(0, 80)
+    };
+  });
+
+  sessions.forEach(session => {
+    if (session.lastReadAt) return;
+    const latestIncoming = messages
+      .filter(message => message.sessionId === session.id && message.from === 'character')
+      .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0))[0];
+    session.lastReadAt = latestIncoming?.createdAt || session.createdAt || now;
   });
 
   return { sessions, activeSessionIds, messages };
@@ -171,4 +197,31 @@ export function applyChatMessageUpdate(chat, options) {
       messages: replaceSessionMessages(chat, characterId, sessionId, scoped)
     }
   };
+}
+
+export function markChatSessionRead(chat, sessionId, now = new Date().toISOString()) {
+  let changed = false;
+  const sessions = (chat.sessions || []).map(session => {
+    if (session.id !== sessionId || Date.parse(session.lastReadAt || 0) >= Date.parse(now)) return session;
+    changed = true;
+    return { ...session, lastReadAt: now };
+  });
+  return changed ? { ...chat, sessions } : chat;
+}
+
+export function unreadCountForSession(chat, sessionId) {
+  const session = (chat.sessions || []).find(item => item.id === sessionId);
+  if (!session || chat.history === false) return 0;
+  const readAt = Date.parse(session.lastReadAt || 0);
+  return (chat.messages || []).filter(message => (
+    message.sessionId === sessionId
+    && message.from === 'character'
+    && Date.parse(message.createdAt || 0) > readAt
+  )).length;
+}
+
+export function pagedSessionMessages(chat, characterId, sessionId, page = 1, pageSize = 50) {
+  const all = messagesForSession(chat, characterId, sessionId);
+  const count = Math.max(pageSize, Math.max(1, Number(page) || 1) * pageSize);
+  return { messages: all.slice(-count), hasEarlier: all.length > count, total: all.length };
 }

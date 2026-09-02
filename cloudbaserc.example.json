@@ -1,6 +1,7 @@
 {
   "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
   "envId": "your-cloudbase-environment-id",
+  "hostingPath": "lovephone",
   "functionRoot": "cloudbase/functions",
   "functions": [
     {

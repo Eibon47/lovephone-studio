@@ -4,11 +4,19 @@ import { WIDGET_CATALOG, WIDGET_IDS } from '../system/widgetCatalog.js';
 import {
   CUSTOM_WIDGET_ACTIONS,
   CUSTOM_WIDGET_SOURCES,
-  CUSTOM_WIDGET_TEMPLATES,
   createCustomWidgetFromTemplate,
   normalizeCustomization,
   validateCustomWidgetCode
-} from './customizationModel.js';
+} from './customizationModel.js?v=app-config-102';
+import {
+  COMPOSITION_ACTIONS,
+  COMPOSITION_DATA_FIELDS,
+  COMPOSITION_ELEMENT_TYPES,
+  COMPOSITION_WIDGET_TEMPLATES,
+  createCompositionElement,
+  createCompositionWidget,
+  normalizeCompositionWidget
+} from './compositionWidgetModel.js?v=app-config-106';
 
 const APP_IDS = new Set(['character', 'chat', 'memory', 'music', 'diary', 'anniversary', 'goodnight', 'settings']);
 const OPTIONAL_APP_IDS = new Set(['memory', 'music', 'diary', 'anniversary', 'goodnight']);
@@ -17,11 +25,12 @@ const FONT_STYLES = new Set(['wenkai', 'clean', 'serif']);
 const PHONE_FRAMES = new Set(['dark', 'graphite', 'cream', 'midnight']);
 const ICON_SETS = new Set(['soft', 'glass', 'sticker', 'mono']);
 const WIDGET_STYLES = new Set(['colorful', 'glass', 'minimal']);
-const CUSTOM_TEMPLATE_IDS = new Set(CUSTOM_WIDGET_TEMPLATES.map(item => item.id));
+const CUSTOM_TEMPLATE_IDS = new Set(COMPOSITION_WIDGET_TEMPLATES.map(item => item.id));
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const MAX_OPERATIONS = 12;
 const ASSISTANT_INTENTS = new Set(['chat', 'clarify', 'advise', 'change', 'proposeWidget', 'generateWidget']);
 const MEMORY_KINDS = new Set(['preferences', 'avoid', 'decisions']);
+const WIDGET_ALIGNMENTS = new Set(['left', 'center', 'right', 'top', 'middle', 'bottom', 'distributeX', 'distributeY']);
 
 const TOOL_NAMES = {
   setAppEnabled: '调整可选 App',
@@ -30,6 +39,11 @@ const TOOL_NAMES = {
   addWidget: '添加小组件',
   removeWidget: '移除小组件',
   moveWidget: '移动小组件',
+  addWidgetElement: '添加组件图层',
+  updateWidgetElement: '修改组件图层',
+  bindWidgetElement: '连接组件数据',
+  groupWidgetElements: '组合组件图层',
+  alignWidgetElements: '对齐组件图层',
   openPreview: '切换右侧预览'
 };
 
@@ -57,12 +71,15 @@ function numberInRange(value, min, max) {
 
 function layoutFrom(value = {}) {
   if (!isObject(value)) return null;
-  const x = numberInRange(value.x, 0, 5);
-  const y = numberInRange(value.y, 0, 100);
-  const w = numberInRange(value.w, 1, 6);
-  const h = numberInRange(value.h, 1, 6);
-  if ([x, y, w, h].some(item => item === null)) return null;
-  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  const w = numberInRange(value.w, 2, 12);
+  const h = numberInRange(value.h, 2, 24);
+  if ([w, h].some(item => item === null)) return null;
+  const roundedW = Math.round(w);
+  const roundedH = Math.round(h);
+  const x = numberInRange(value.x, 0, 12 - roundedW);
+  const y = numberInRange(value.y, 0, 96 - roundedH);
+  if ([x, y].some(item => item === null)) return null;
+  return { x: Math.round(x), y: Math.round(y), w: roundedW, h: roundedH };
 }
 
 function safeAppStyle(values = {}) {
@@ -119,13 +136,24 @@ export function createBuilderAssistantContext(config, phone = {}, attachments = 
       enabled: Boolean(config.theme?.widgets?.[widget.id]?.enabled),
       layout: config.theme?.widgets?.[widget.id]?.layout || null
     })),
-    customWidgetTemplates: CUSTOM_WIDGET_TEMPLATES.map(template => ({ id: template.id, name: template.name })),
+    customWidgetTemplates: COMPOSITION_WIDGET_TEMPLATES.map(template => ({ id: template.id, name: template.name })),
     customWidgets: (customization.widgets || []).map(widget => ({
       id: widget.id,
       name: widget.name,
       templateId: widget.templateId,
       enabled: Boolean(widget.enabled),
-      layout: widget.layout
+      layout: widget.layout,
+      kind: widget.kind || (widget.mode === 'code' ? 'code' : 'legacy'),
+      elements: widget.kind === 'composition'
+        ? (widget.elements || []).map(element => ({
+          id: element.id,
+          name: element.name,
+          type: element.type,
+          binding: element.binding,
+          action: element.action,
+          frame: element.frame
+        }))
+        : []
     })),
     customApps: (phone.customApps || []).map(app => ({ id: app.id, name: app.name || app.manifest?.name || app.id }))
   };
@@ -155,9 +183,14 @@ export function buildBuilderAssistantSystemPrompt(context) {
 3. setAppStyle args：appId（已启用 App），values 可用 uiTheme（lovephone/wechat/qq/instagram/x）与 background/surface/text/accent（#RRGGBB）。
 4. addWidget args：kind（builtin 或 custom），id（上下文中的组件或模板 id）。
 5. removeWidget args：kind（builtin 或 custom），id（上下文中的组件 id）。
-6. moveWidget args：kind（builtin 或 custom），id，layout（x 0-5,y 0-100,w 1-6,h 1-6）。
+6. moveWidget args：kind（builtin 或 custom），id，layout（x 0-11,y 0-94,w 2-12,h 2-24，且 y+h 不得超过 96；App 图标位于独立的固定区域）。
 7. openPreview args：appId（home 或已启用 App）。
 8. applyImageAsset args：attachmentId（上下文中的图片附件）、targetType（appIcon/appMedia/builtinWidget/customWidget）、targetId、slot。appIcon 的 slot 固定 icon；appMedia 允许 backgroundImage/primaryButtonImage/backButtonImage；builtinWidget 目前只允许 photo 的 image；customWidget 的 slot 为 image 或一个安全素材名。
+9. addWidgetElement args：widgetId、elementType（text/image/shape/button/progress/musicControl）、name。
+10. updateWidgetElement args：widgetId、elementId、values，可修改 content、name、frame（x/y/w/h/rotation）、style（color/background/radius/opacity/fontSize）。
+11. bindWidgetElement args：widgetId、elementId、source、field、action、target。数据字段必须来自上下文允许的数据。
+12. groupWidgetElements args：widgetId、elementIds（至少两个）。
+13. alignWidgetElements args：widgetId、elementIds（至少两个）、alignment（left/center/right/top/middle/bottom/distributeX/distributeY）。
 
 每次最多 ${MAX_OPERATIONS} 个操作。用户需要上传图片、导入资源、写 CSS/JS 时，正常讨论并说明需要在编辑器中手动完成，operations 留空。不要把“无法自动执行”等同于“无法帮助用户”。
 
@@ -267,6 +300,83 @@ export function validateBuilderAssistantOperation(operation, config, resources =
       ? WIDGET_IDS.includes(id)
       : (config.theme?.customization?.widgets || []).some(widget => widget.id === id);
     return kind && exists && layout ? { tool, args: { kind, id, layout } } : null;
+  }
+
+  if (tool === 'addWidgetElement') {
+    const widgetId = cleanText(args.widgetId, 80);
+    const elementType = COMPOSITION_ELEMENT_TYPES.includes(args.elementType) && args.elementType !== 'group' ? args.elementType : '';
+    const name = cleanText(args.name, 60) || elementType;
+    const widget = (config.theme?.customization?.widgets || []).find(item => item.id === widgetId && item.kind === 'composition');
+    return widget && widget.elements.length < 40 && elementType
+      ? { tool, args: { widgetId, elementType, name } }
+      : null;
+  }
+
+  if (tool === 'updateWidgetElement') {
+    const widgetId = cleanText(args.widgetId, 80);
+    const elementId = cleanText(args.elementId, 80);
+    const widget = (config.theme?.customization?.widgets || []).find(item => item.id === widgetId && item.kind === 'composition');
+    if (!widget?.elements.some(item => item.id === elementId) || !isObject(args.values)) return null;
+    const values = {};
+    const name = cleanText(args.values.name, 60);
+    const content = cleanText(args.values.content, 500);
+    if (name) values.name = name;
+    if (content) values.content = content;
+    if (isObject(args.values.frame)) {
+      values.frame = {};
+      for (const [key, min, max] of [['x', -1000, 2000], ['y', -1000, 2000], ['w', 20, 2000], ['h', 20, 2000], ['rotation', -180, 180]]) {
+        const value = numberInRange(args.values.frame[key], min, max);
+        if (value !== null) values.frame[key] = value;
+      }
+    }
+    if (isObject(args.values.style)) {
+      values.style = {};
+      ['color', 'background'].forEach(key => {
+        const value = args.values.style[key] === 'transparent' ? 'transparent' : cleanColor(args.values.style[key]);
+        if (value) values.style[key] = value;
+      });
+      for (const [key, min, max] of [['radius', 0, 500], ['opacity', 0, 100], ['fontSize', 8, 220]]) {
+        const value = numberInRange(args.values.style[key], min, max);
+        if (value !== null) values.style[key] = value;
+      }
+    }
+    return Object.keys(values).length ? { tool, args: { widgetId, elementId, values } } : null;
+  }
+
+  if (tool === 'bindWidgetElement') {
+    const widgetId = cleanText(args.widgetId, 80);
+    const elementId = cleanText(args.elementId, 80);
+    const source = Object.hasOwn(COMPOSITION_DATA_FIELDS, args.source) ? args.source : '';
+    const field = source && COMPOSITION_DATA_FIELDS[source].includes(args.field) ? args.field : '';
+    const action = COMPOSITION_ACTIONS.includes(args.action) ? args.action : 'none';
+    const target = cleanText(args.target, 80);
+    const widget = (config.theme?.customization?.widgets || []).find(item => item.id === widgetId && item.kind === 'composition');
+    return widget?.elements.some(item => item.id === elementId) && source && field
+      ? { tool, args: { widgetId, elementId, source, field, action, target } }
+      : null;
+  }
+
+  if (tool === 'groupWidgetElements') {
+    const widgetId = cleanText(args.widgetId, 80);
+    const widget = (config.theme?.customization?.widgets || []).find(item => item.id === widgetId && item.kind === 'composition');
+    const validIds = new Set(widget?.elements.map(item => item.id) || []);
+    const elementIds = Array.isArray(args.elementIds)
+      ? [...new Set(args.elementIds.map(item => cleanText(item, 80)).filter(item => validIds.has(item)))].slice(0, 20)
+      : [];
+    return widget && elementIds.length >= 2 ? { tool, args: { widgetId, elementIds } } : null;
+  }
+
+  if (tool === 'alignWidgetElements') {
+    const widgetId = cleanText(args.widgetId, 80);
+    const widget = (config.theme?.customization?.widgets || []).find(item => item.id === widgetId && item.kind === 'composition');
+    const validIds = new Set(widget?.elements.filter(item => item.type !== 'group').map(item => item.id) || []);
+    const elementIds = Array.isArray(args.elementIds)
+      ? [...new Set(args.elementIds.map(item => cleanText(item, 80)).filter(item => validIds.has(item)))].slice(0, 20)
+      : [];
+    const alignment = WIDGET_ALIGNMENTS.has(args.alignment) ? args.alignment : '';
+    return widget && elementIds.length >= 2 && alignment
+      ? { tool, args: { widgetId, elementIds, alignment } }
+      : null;
   }
 
   if (tool === 'openPreview') {
@@ -416,6 +526,47 @@ export function parseWidgetGenerationResponse(text, config, proposal) {
   };
 }
 
+function alignCompositionElements(widget, elementIds, alignment) {
+  const elements = elementIds.map(id => widget.elements.find(item => item.id === id)).filter(Boolean);
+  if (elements.length < 2) return;
+  const left = Math.min(...elements.map(item => item.frame.x));
+  const top = Math.min(...elements.map(item => item.frame.y));
+  const right = Math.max(...elements.map(item => item.frame.x + item.frame.w));
+  const bottom = Math.max(...elements.map(item => item.frame.y + item.frame.h));
+  const center = (left + right) / 2;
+  const middle = (top + bottom) / 2;
+
+  elements.forEach(element => {
+    if (alignment === 'left') element.frame.x = left;
+    if (alignment === 'center') element.frame.x = center - element.frame.w / 2;
+    if (alignment === 'right') element.frame.x = right - element.frame.w;
+    if (alignment === 'top') element.frame.y = top;
+    if (alignment === 'middle') element.frame.y = middle - element.frame.h / 2;
+    if (alignment === 'bottom') element.frame.y = bottom - element.frame.h;
+  });
+
+  if (alignment === 'distributeX' && elements.length > 2) {
+    const ordered = [...elements].sort((a, b) => a.frame.x - b.frame.x);
+    const contentWidth = ordered.reduce((sum, item) => sum + item.frame.w, 0);
+    const gap = Math.max(0, (right - left - contentWidth) / (ordered.length - 1));
+    let cursor = left;
+    ordered.forEach(element => {
+      element.frame.x = cursor;
+      cursor += element.frame.w + gap;
+    });
+  }
+  if (alignment === 'distributeY' && elements.length > 2) {
+    const ordered = [...elements].sort((a, b) => a.frame.y - b.frame.y);
+    const contentHeight = ordered.reduce((sum, item) => sum + item.frame.h, 0);
+    const gap = Math.max(0, (bottom - top - contentHeight) / (ordered.length - 1));
+    let cursor = top;
+    ordered.forEach(element => {
+      element.frame.y = cursor;
+      cursor += element.frame.h + gap;
+    });
+  }
+}
+
 export function applyBuilderAssistantOperations(config, operations = [], resources = {}) {
   const next = cloneConfig(config);
   const accepted = [];
@@ -468,7 +619,7 @@ export function applyBuilderAssistantOperations(config, operations = [], resourc
       if (args.kind === 'builtin') next.theme.widgets[args.id].enabled = true;
       if (args.kind === 'custom') {
         const widgets = next.theme.customization.widgets;
-        if (widgets.length < 24) widgets.push(createCustomWidgetFromTemplate(args.id, widgets.length));
+        if (widgets.length < 24) widgets.push(createCompositionWidget(args.id, widgets.length));
       }
     }
 
@@ -486,6 +637,65 @@ export function applyBuilderAssistantOperations(config, operations = [], resourc
       if (args.kind === 'custom') {
         const widget = next.theme.customization.widgets.find(item => item.id === args.id);
         if (widget) widget.layout = args.layout;
+      }
+    }
+
+    if (tool === 'addWidgetElement') {
+      previewAppId = 'home';
+      const widget = next.theme.customization.widgets.find(item => item.id === args.widgetId && item.kind === 'composition');
+      if (widget && widget.elements.length < 40) {
+        const element = createCompositionElement(args.elementType, widget.elements.length);
+        element.name = args.name;
+        widget.elements.push(element);
+        Object.assign(widget, normalizeCompositionWidget(widget));
+      }
+    }
+
+    if (tool === 'updateWidgetElement') {
+      previewAppId = 'home';
+      const widget = next.theme.customization.widgets.find(item => item.id === args.widgetId && item.kind === 'composition');
+      const element = widget?.elements.find(item => item.id === args.elementId);
+      if (element) {
+        if (args.values.name) element.name = args.values.name;
+        if (args.values.content) element.content = args.values.content;
+        if (args.values.frame) element.frame = { ...element.frame, ...args.values.frame };
+        if (args.values.style) element.style = { ...element.style, ...args.values.style };
+        Object.assign(widget, normalizeCompositionWidget(widget));
+      }
+    }
+
+    if (tool === 'bindWidgetElement') {
+      previewAppId = 'home';
+      const widget = next.theme.customization.widgets.find(item => item.id === args.widgetId && item.kind === 'composition');
+      const element = widget?.elements.find(item => item.id === args.elementId);
+      if (element) {
+        element.binding = { source: args.source, field: args.field };
+        element.action = { type: args.action, target: args.target };
+        Object.assign(widget, normalizeCompositionWidget(widget));
+      }
+    }
+
+    if (tool === 'groupWidgetElements') {
+      previewAppId = 'home';
+      const widget = next.theme.customization.widgets.find(item => item.id === args.widgetId && item.kind === 'composition');
+      if (widget) {
+        const group = createCompositionElement('group', widget.elements.length);
+        group.id = `group-${Date.now()}-${widget.elements.length}`;
+        group.name = 'AI 组合';
+        widget.elements.push(group);
+        widget.elements.forEach(element => {
+          if (args.elementIds.includes(element.id)) element.parentId = group.id;
+        });
+        Object.assign(widget, normalizeCompositionWidget(widget));
+      }
+    }
+
+    if (tool === 'alignWidgetElements') {
+      previewAppId = 'home';
+      const widget = next.theme.customization.widgets.find(item => item.id === args.widgetId && item.kind === 'composition');
+      if (widget) {
+        alignCompositionElements(widget, args.elementIds, args.alignment);
+        Object.assign(widget, normalizeCompositionWidget(widget));
       }
     }
 
@@ -534,7 +744,12 @@ export function applyBuilderAssistantOperations(config, operations = [], resourc
       if (args.targetType === 'customWidget') {
         const widget = next.theme.customization.widgets.find(item => item.id === args.targetId);
         if (!widget) return;
-        if (args.slot === 'image') widget.image = attachment.image;
+        if (widget.kind === 'composition') {
+          const target = widget.elements.find(item => item.type === 'image' && item.id === args.slot)
+            || widget.elements.find(item => item.type === 'image');
+          if (target) target.asset = attachment.image;
+          Object.assign(widget, normalizeCompositionWidget(widget));
+        } else if (args.slot === 'image') widget.image = attachment.image;
         else widget.assets = { ...(widget.assets || {}), [args.slot]: attachment.image };
       }
     }
@@ -554,6 +769,11 @@ export function describeBuilderAssistantOperation(operation) {
   if (safe.tool === 'addWidget') return `${TOOL_NAMES[safe.tool]}：${args.id}`;
   if (safe.tool === 'removeWidget') return `${TOOL_NAMES[safe.tool]}：${args.id}`;
   if (safe.tool === 'moveWidget') return `${TOOL_NAMES[safe.tool]}：${args.id}`;
+  if (safe.tool === 'addWidgetElement') return `${TOOL_NAMES[safe.tool]}：${args.name}`;
+  if (safe.tool === 'updateWidgetElement') return `${TOOL_NAMES[safe.tool]}：${args.elementId}`;
+  if (safe.tool === 'bindWidgetElement') return `${TOOL_NAMES[safe.tool]}：${args.source}.${args.field}`;
+  if (safe.tool === 'groupWidgetElements') return `${TOOL_NAMES[safe.tool]}：${args.elementIds.length} 个图层`;
+  if (safe.tool === 'alignWidgetElements') return `${TOOL_NAMES[safe.tool]}：${args.alignment}`;
   if (safe.tool === 'openPreview') return `${TOOL_NAMES[safe.tool]}：${args.appId}`;
   if (safe.tool === 'createCodeWidget') return `生成自定义组件：${args.name}`;
   if (safe.tool === 'applyImageAsset') return `使用图片附件：${args.targetId} · ${args.slot}`;
